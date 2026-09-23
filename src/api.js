@@ -14,7 +14,7 @@
 // Si vuelves a implementar con "Nueva implementación", esta URL cambia y
 // hay que actualizarla acá.
 export const API_URL =
-  'https://script.google.com/macros/s/AKfycbwHJDpcFu2aMIIOm31WFdNyyCMNmy6IVs3ytFBtgy6l9IYgpiCX5dH7Wz45012YLsadFw/exec';
+  'https://script.google.com/macros/s/AKfycbxBJlzINKoiB41pSn44KIU6cmxvBp60THPIrXNpV1dtsZ9BkgeeQoebU6ZBwdPVZx0_-g/exec';
 
 /** Llamada genérica a la API. Devuelve los datos o lanza un error con el mensaje del servidor. */
 async function llamar(accion, credenciales, extra) {
