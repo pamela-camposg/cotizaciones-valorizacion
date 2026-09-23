@@ -1,0 +1,12 @@
+Faltan dos archivos en esta carpeta:
+
+    ambipar-logo.png     (el logotipo "ambipar" de la barra superior)
+    ambipar-a-verde.png  (la "a" del logo, que se usa como marca de agua)
+
+Son los mismos dos archivos que ya están en el repositorio Planificador_GIRI.
+Descárguelos desde allá y súbalos a esta carpeta "public".
+
+Mientras no estén, la página funciona igual: cae automáticamente a un logo
+dibujado de respaldo, pero no es el logo oficial.
+
+Este archivo de aviso se puede borrar una vez subidos los PNG.
