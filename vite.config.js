@@ -5,5 +5,5 @@ import react from '@vitejs/plugin-react';
 // Si publicas en un dominio propio o en Vercel/Netlify, deja base: '/'.
 export default defineConfig({
   plugins: [react()],
-  base: '/NOMBRE-DEL-REPO/',
+  base: '/cotizaciones-valorizacion/',
 });
