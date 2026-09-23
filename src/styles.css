@@ -1,0 +1,252 @@
+/* =========================================================================
+   DESIGN SYSTEM — el mismo del Planificador GIRI / Sistema Trazabilidad
+   lime #CCFF00 · tinta #031716 · grises zinc · Barlow Semi Condensed
+   Regla de forma: los contenedores grandes llevan 8px de radio; cualquier
+   cosa coloreada queda cuadrada.
+   ========================================================================= */
+:root{
+  --neon:#CCFF00; --neon-suave:#FBFFE8; --tinta:#031716;
+  --z50:#FAFAFA; --z100:#F4F4F5; --z200:#E4E4E7; --z300:#D4D4D8;
+  --z400:#A1A1AA; --z500:#71717A; --z600:#52525B; --z700:#3F3F46;
+  --rojo:#C0392B; --rojoBg:#FCEDEB; --ambar:#E8A33D;
+  --verde:#1E8E4E; --verdeBg:#E7F4EC;
+}
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0 }
+html,body{ overflow-x:hidden }
+body{
+  font-family:'Neo Sans','Neo Sans W01','Barlow Semi Condensed',system-ui,sans-serif;
+  background:#F4F4F5; color:var(--tinta); -webkit-font-smoothing:antialiased;
+  font-size:13px; min-height:100vh;
+}
+.premium-heading{ letter-spacing:-0.01em }
+::selection{ background:var(--neon); color:var(--tinta) }
+a,button,label,summary,[role=button]{ cursor:pointer }
+button:disabled{ cursor:not-allowed; opacity:.45 }
+input,select,textarea{ cursor:text; font-family:inherit }
+select{ cursor:pointer }
+
+/* ---------- MARCA DE AGUA ---------- */
+.watermark{
+  pointer-events:none; position:fixed; left:-277px; top:-18px; z-index:-10;
+  height:716px; width:716px; user-select:none; opacity:.17;
+}
+.watermark img,.watermark svg{ height:100%; width:100%; object-fit:contain; display:block }
+
+/* ---------- BARRA SUPERIOR ---------- */
+header.topbar{ position:sticky; top:0; z-index:60; background:var(--neon) }
+.topbar-in{ margin:0 auto; max-width:1500px; display:flex; align-items:center; gap:1.5rem;
+  height:5rem; padding:0 1.5rem; flex-wrap:wrap }
+.topbar-in .logo{ height:2rem; width:auto; display:block; flex:0 0 auto }
+.topbar-in svg.logo{ width:181px }
+.divider{ height:2.25rem; width:1px; background:rgba(3,23,22,.25) }
+.app-title{ min-width:0; line-height:1.25 }
+.app-title p:first-child{ font-size:17px; font-weight:500; color:var(--tinta);
+  letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.app-title p:last-child{ margin-top:.125rem; font-size:13px; color:rgba(3,23,22,.7) }
+.topbar-right{ margin-left:auto; display:flex; align-items:center; gap:.625rem; flex-wrap:wrap }
+.pill{ display:flex; align-items:center; gap:.5rem; border-radius:6px; background:var(--tinta);
+  color:#fff; padding:.5rem .75rem; font-size:12px }
+.dot{ width:6px; height:6px; border-radius:9999px; background:var(--neon); flex-shrink:0;
+  animation:latir 2.4s ease-in-out infinite }
+@keyframes latir{ 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* Pestañas de la barra superior */
+.navtabs{ display:inline-flex; border:1px solid rgba(3,23,22,.2); border-radius:6px; padding:2px; background:rgba(255,255,255,.35) }
+.navtabs button{ border:0; background:none; padding:.4rem .95rem; font-size:12.5px;
+  font-family:inherit; color:rgba(3,23,22,.75); border-radius:4px; transition:.15s }
+.navtabs button:hover{ background:rgba(255,255,255,.7); color:var(--tinta) }
+.navtabs button[aria-pressed=true]{ background:var(--tinta); color:var(--neon); font-weight:500 }
+
+/* ---------- LIENZO ---------- */
+.canvas{ margin:0 auto; max-width:1040px; padding:2.5rem 1.5rem 3rem }
+.canvas.ancho{ max-width:1500px }
+.page-head{ margin-bottom:1.5rem }
+.lime-rule{ display:block; height:3px; width:2.5rem; background:var(--neon); margin-bottom:1rem }
+h1.premium-heading{ font-size:2.25rem; line-height:2.5rem; font-weight:500 }
+.bajada{ margin-top:.625rem; max-width:38rem; font-size:14px; line-height:1.625; color:var(--z500) }
+
+/* ---------- TARJETAS ---------- */
+.card{ border:1px solid var(--z200); border-left:3px solid var(--z200); border-radius:8px;
+  background:#fff; padding:1.25rem 1.5rem 1.5rem; transition:all .3s ease-in-out }
+.card:hover{ border-left-color:var(--neon); box-shadow:0 8px 30px rgb(0 0 0 / .04) }
+.card + .card{ margin-top:1.25rem }
+.card-head{ display:flex; align-items:baseline; gap:.75rem; flex-wrap:wrap }
+.fmtNum{ display:inline-flex; height:1.25rem; width:1.5rem; align-items:center; justify-content:center;
+  border-radius:3px; background:var(--z100); font-size:10px; font-weight:600; color:var(--z500); transition:.3s }
+.card:hover .fmtNum{ background:var(--neon); color:var(--tinta) }
+.card h2{ font-size:15px; font-weight:500; letter-spacing:-.01em }
+.card-note{ margin-top:.375rem; max-width:44rem; font-size:13px; line-height:1.625; color:var(--z500) }
+.tag{ border-radius:4px; background:var(--z100); padding:.125rem .5rem; font-size:10px;
+  font-weight:500; letter-spacing:.12em; color:var(--z500) }
+
+/* ---------- BOTONES ---------- */
+.btn{ display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
+  background:var(--neon); color:var(--tinta); border:1px solid var(--neon); border-radius:6px;
+  padding:.55rem 1.05rem; font-size:12.5px; font-weight:600; font-family:inherit; transition:.15s ease }
+.btn:hover:not(:disabled){ background:var(--tinta); color:var(--neon); border-color:var(--tinta); transform:translateY(-1px) }
+.btn:active{ transform:translateY(0) }
+.btn.secondary{ background:#fff; color:var(--tinta); border-color:var(--z200); font-weight:500 }
+.btn.secondary:hover:not(:disabled){ border-color:var(--neon); background:var(--neon-suave); color:var(--tinta) }
+.btn.danger{ background:#fff; color:var(--rojo); border-color:#EFCFCB; font-weight:500 }
+.btn.danger:hover:not(:disabled){ background:var(--rojo); color:#fff; border-color:var(--rojo) }
+.btn.ancho{ width:100% }
+.btn svg{ width:14px; height:14px; flex:0 0 auto }
+.link-btn{ background:none; border:0; padding:2px 4px; font-family:inherit; font-size:11px;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--z400) }
+.link-btn:hover{ color:var(--tinta) }
+
+/* ---------- CAMPOS ---------- */
+.form-section{ font-size:10px; font-weight:500; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--tinta); margin:1.2rem 0 .8rem; padding-bottom:.45rem; border-bottom:1px solid var(--z200) }
+.form-section:first-of-type{ margin-top:0 }
+.field{ margin-bottom:.8rem }
+.field label{ display:block; font-size:10px; font-weight:500; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--z400); margin-bottom:.3rem }
+.field label i{ font-style:normal; color:var(--z300); text-transform:none; letter-spacing:0 }
+.field label em{ font-style:normal; color:var(--rojo); margin-left:3px }
+.field input,.field select,.field textarea{ width:100%; border:1px solid var(--z200); border-radius:6px;
+  padding:.5rem .7rem; font-size:13px; color:var(--tinta); background:#fff; outline:none; transition:.15s }
+.field textarea{ resize:vertical; line-height:1.5 }
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--neon); box-shadow:0 0 0 3px rgba(204,255,0,.3) }
+.field input:disabled,.field select:disabled,.field textarea:disabled{
+  background:var(--z100); color:var(--z500); cursor:not-allowed }
+.field input[readonly]{ background:var(--z50); color:var(--z600); cursor:default }
+.field .hint{ margin-top:.3rem; font-size:11.5px; color:var(--z400) }
+.row2{ display:grid; grid-template-columns:1fr 1fr; gap:.7rem }
+.row3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:.7rem }
+
+/* Campos que se completan solos */
+.auto-badge{ float:right; font-size:9px; letter-spacing:.1em; color:var(--z300);
+  text-transform:uppercase; font-weight:500 }
+
+/* ---------- CHIPS ---------- */
+.chips{ display:flex; gap:.4rem; flex-wrap:wrap }
+.chip{ padding:.35rem .8rem; border:1px solid var(--z200); border-radius:4px; background:#fff;
+  font-size:12px; font-family:inherit; color:var(--z600); transition:.15s }
+.chip:hover:not(:disabled){ border-color:var(--neon) }
+.chip[aria-pressed=true]{ background:var(--neon); border-color:var(--neon); color:var(--tinta); font-weight:500 }
+
+/* ---------- AUTOCOMPLETAR ---------- */
+.ac-wrap{ position:relative }
+.ac-list{ position:absolute; left:0; right:0; top:100%; z-index:40; background:#fff;
+  border:1px solid var(--z200); border-top:0; max-height:196px; overflow-y:auto;
+  box-shadow:0 8px 24px rgb(0 0 0 / .08) }
+.ac-list div{ padding:.45rem .7rem; font-size:12.5px; border-bottom:1px solid var(--z100) }
+.ac-list div:last-child{ border-bottom:0 }
+.ac-list div:hover{ background:var(--neon-suave) }
+.ac-new{ margin-top:.45rem; font-size:12px; color:var(--z500) }
+.ac-new button{ background:none; border:0; padding:0; font-family:inherit; font-size:12px;
+  font-weight:600; color:var(--tinta); text-decoration:underline; text-underline-offset:2px }
+
+/* ---------- AVISOS ---------- */
+.aviso{ border:1px solid var(--z200); border-left:3px solid var(--neon); border-radius:0 6px 6px 0;
+  background:var(--z50); padding:.7rem .95rem; font-size:12.5px; color:var(--z600); line-height:1.5 }
+.aviso.nuevo{ border-color:#E6D5B0; border-left-color:#B26A00; background:#FFF8EC; color:#7A4A05 }
+.aviso.malo{ border-color:#EFCFCB; border-left-color:var(--rojo); background:var(--rojoBg); color:#7B2318 }
+.aviso b{ font-weight:600 }
+.aviso + .field, .aviso + .row2{ margin-top:.9rem }
+
+/* Código de residuo que se arma solo */
+.codres{ display:flex; align-items:center; gap:.6rem; border:1px solid var(--z200);
+  border-left:3px solid var(--neon); background:var(--neon-suave); padding:.6rem .85rem }
+.codres span{ font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--z500) }
+.codres b{ font-size:15px; font-weight:600; letter-spacing:.02em; font-variant-numeric:tabular-nums }
+.codres b.vacio{ color:var(--z300); font-weight:400; letter-spacing:.1em }
+
+/* ---------- KPIs ---------- */
+.kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:.5rem; margin-top:1.1rem }
+.kpi{ border:1px solid var(--z200); border-left:3px solid var(--neon); padding:.6rem .8rem; background:var(--neon-suave) }
+.kpi b{ display:block; font-size:19px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums }
+.kpi span{ display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--z500); margin-top:4px }
+
+/* ---------- TABLA ---------- */
+.tabla-box{ border:1px solid var(--z200); border-radius:8px; background:#fff; overflow:hidden; margin-top:1.1rem }
+.tabla-scroll{ overflow:auto; max-height:520px }
+table.datos{ width:100%; border-collapse:collapse; font-size:12px; min-width:880px }
+table.datos thead th{ position:sticky; top:0; z-index:5; background:var(--neon); color:var(--tinta);
+  text-align:left; padding:.55rem .7rem; font-size:10.5px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; white-space:nowrap; border-left:1px solid rgba(3,23,22,.12) }
+table.datos thead th:first-child{ border-left:0 }
+table.datos td{ padding:.5rem .7rem; border-top:1px solid var(--z200); white-space:nowrap }
+table.datos tbody tr:nth-child(even){ background:var(--z50) }
+table.datos tbody tr:hover{ background:var(--neon-suave) }
+table.datos td.num{ text-align:right; font-variant-numeric:tabular-nums }
+table.datos td.destacado{ font-weight:600 }
+.empty-note{ border:1px dashed var(--z300); padding:1.6rem; text-align:center; font-size:13px; color:var(--z400) }
+
+/* ---------- FILTROS ---------- */
+.toolbar{ display:flex; align-items:flex-end; gap:.6rem; flex-wrap:wrap; margin-top:1.1rem }
+.toolbar .field{ margin-bottom:0; min-width:170px }
+.toolbar .right{ margin-left:auto; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap }
+
+/* ---------- LOGIN ---------- */
+.login-wrap{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1.5rem; background:var(--z100) }
+.login-card{ width:380px; max-width:100%; background:#fff; border:1px solid var(--z200);
+  border-top:3px solid var(--neon); border-radius:8px; padding:2rem 1.85rem;
+  box-shadow:0 24px 60px rgb(0 0 0 / .10) }
+.login-card h1{ font-size:1.5rem; line-height:1.9rem; font-weight:500; letter-spacing:-.01em; margin-bottom:.3rem }
+.login-card .sub{ font-size:12.5px; color:var(--z500); line-height:1.6; margin-bottom:1.5rem }
+.login-logo{ height:1.6rem; width:auto; display:block; margin-bottom:1.25rem }
+.login-pie{ margin-top:1.25rem; font-size:11.5px; color:var(--z400); line-height:1.6 }
+.login-error{ border-left:3px solid var(--rojo); background:var(--rojoBg); color:#7B2318;
+  padding:.55rem .8rem; font-size:12px; margin-bottom:.9rem }
+
+/* ---------- MODAL ---------- */
+.overlay{ position:fixed; inset:0; background:rgba(3,23,22,.45); z-index:100; display:flex;
+  align-items:flex-start; justify-content:center; padding:1rem; padding-top:10vh }
+.modal{ background:#fff; border-radius:8px; border-top:3px solid var(--neon); width:520px;
+  max-width:100%; max-height:76vh; overflow:hidden; display:flex; flex-direction:column;
+  box-shadow:0 24px 60px rgb(0 0 0 / .18) }
+.modal-head{ padding:1.1rem 1.25rem; border-bottom:1px solid var(--z200) }
+.modal-head .kicker{ font-size:10px; font-weight:500; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--z400); margin-bottom:.5rem }
+.modal-body{ overflow-y:auto }
+.modal-body .op{ padding:.6rem .95rem; border-bottom:1px solid var(--z100) }
+.modal-body .op:hover{ background:var(--neon-suave) }
+.modal-body .op b{ display:block; font-size:12.5px; font-weight:600 }
+.modal-body .op span{ display:block; font-size:11px; color:var(--z500); margin-top:1px }
+
+/* ---------- TOAST ---------- */
+#toast{ position:fixed; left:1.5rem; bottom:1.5rem; z-index:200; background:var(--tinta); color:#fff;
+  border-left:3px solid var(--neon); padding:.7rem 1rem; font-size:12.5px; max-width:360px;
+  opacity:0; transform:translateY(8px); pointer-events:none; transition:.2s; line-height:1.5 }
+#toast.on{ opacity:1; transform:none }
+#toast.malo{ border-left-color:var(--rojo) }
+
+/* ---------- PIE ---------- */
+footer.footer{ border-top:1px solid var(--z200); background:#fff }
+.footer-in{ margin:0 auto; max-width:1500px; display:flex; flex-wrap:wrap; align-items:center;
+  justify-content:space-between; gap:.75rem; padding:1.5rem; font-size:12px; color:var(--z400) }
+
+/* ---------- CELULAR ---------- */
+@media (max-width:900px){
+  body{ font-size:14px }
+  .canvas{ padding:1.25rem 1rem 2rem }
+  .topbar-in{ height:auto; padding:.7rem 1rem; gap:.7rem }
+  .topbar-in .logo{ height:1.5rem }
+  .divider{ display:none }
+  .app-title p:first-child{ font-size:15px }
+  .app-title p:last-child{ font-size:11px }
+  .topbar-right{ width:100%; margin-left:0 }
+  h1.premium-heading{ font-size:1.6rem; line-height:2rem }
+  .card{ padding:1rem .9rem 1.2rem; border-radius:6px }
+  .card + .card{ margin-top:.9rem }
+  .row2,.row3{ grid-template-columns:1fr }
+  .pill{ font-size:11px; padding:.35rem .6rem }
+  .page-head{ margin-bottom:1rem }
+  .toolbar .right{ margin-left:0; width:100% }
+  .toolbar .field{ min-width:0; flex:1 1 140px }
+  .kpis{ grid-template-columns:repeat(2,1fr) }
+  .overlay{ padding:0; padding-top:0 }
+  .modal{ border-radius:0; max-height:100vh; height:100%; width:100% }
+  .watermark{ display:none }
+}
+
+@media print{
+  .topbar-right,.toolbar,footer.footer,#toast,.watermark{ display:none!important }
+  body{ background:#fff }
+  .canvas{ padding:0; max-width:none }
+  .card{ border:0; box-shadow:none; padding:0 }
+  header.topbar{ position:static }
+}

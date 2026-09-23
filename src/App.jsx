@@ -1,815 +1,910 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import * as api from './api.js';
-
 import { RESIDUOS_TREE, LISTAS, DESTINATARIOS_SEED } from './data.js';
 
-const COLORS = {
-  teal: '#032024',
-  tealSoft: '#0B3A40',
-  lime: '#CDFF00',
-  cream: '#F5F4ED',
-  creamDark: '#E8E5D8',
-  ink: '#0F1B1C',
-  gray: '#5B6B6C',
-  border: '#D8D4C4',
-  danger: '#C1440E',
-};
-
+/* ══════════════════════════════════════════════════════════════════════════
+   1 · DATOS DERIVADOS
+   ══════════════════════════════════════════════════════════════════════════ */
 const REGION_BY_COMUNA = Object.fromEntries(LISTAS.COMUNA_REGION);
 const COMUNAS = LISTAS.COMUNA_REGION.map((c) => c[0]);
+const BASE = import.meta.env.BASE_URL;
 
+/* Cada nodo del árbol viene como "Nombre|COD": se parte por el último "|". */
 function splitKey(key) {
   const i = key.lastIndexOf('|');
   return { name: key.slice(0, i), code: key.slice(i + 1) };
 }
+function nameOf(key) { return key ? splitKey(key).name : ''; }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function fmtCLP(n) {
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function fmtNum(n) {
   if (n === '' || n === null || n === undefined || isNaN(n)) return '';
   return new Intl.NumberFormat('es-CL').format(n);
 }
 
-/* ============================== ALMACENAMIENTO ============================== */
+/* ══════════════════════════════════════════════════════════════════════════
+   2 · MARCA
+   ══════════════════════════════════════════════════════════════════════════ */
+/* El logo y la "a" son los mismos archivos del Planificador. Si no están
+   subidos al repositorio, cae al dibujo de respaldo y la página no se rompe. */
+function LogoAmbipar({ className = 'logo' }) {
+  const [falla, setFalla] = useState(false);
+  if (falla) {
+    return (
+      <svg viewBox="0 0 260 46" className={className} aria-label="Ambipar">
+        <text x="0" y="35" fontFamily="'Barlow Semi Condensed', sans-serif" fontSize="42"
+          fontWeight="600" letterSpacing="-1" fill="#031716">ambipar</text>
+        <g transform="translate(220 3)" fill="none" stroke="#031716" strokeLinecap="butt">
+          <rect x="5" y="5" width="26" height="26" rx="6" transform="rotate(45 18 18)" strokeWidth="3.2" />
+          <circle cx="17.4" cy="19.8" r="4.9" strokeWidth="3" />
+          <path d="M22.3 13.4 V 26.2" strokeWidth="3" />
+        </g>
+      </svg>
+    );
+  }
+  return <img src={BASE + 'ambipar-logo.png'} alt="Ambipar" className={className}
+    onError={() => setFalla(true)} />;
+}
 
-
-/* ============================== UI ATOMS ============================== */
-function Field({ label, required, hint, children, auto }) {
+function MarcaDeAgua() {
+  const [falla, setFalla] = useState(false);
   return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{
-        display: 'flex', alignItems: 'baseline', gap: 6,
-        fontSize: 12.5, fontWeight: 600, color: COLORS.teal,
-        letterSpacing: '0.01em', marginBottom: 5,
-      }}>
-        {label}
-        {required && <span style={{ color: COLORS.danger }}>*</span>}
-        {auto && <span style={{ fontSize: 10.5, fontWeight: 500, color: COLORS.gray }}>· automático</span>}
-      </label>
-      {children}
-      {hint && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 3 }}>{hint}</div>}
+    <div aria-hidden="true" className="watermark">
+      {falla ? (
+        <svg viewBox="0 0 100 100" style={{ padding: '18%' }}>
+          <g fill="none" stroke="#CCFF00" strokeLinecap="butt">
+            <rect x="22" y="22" width="56" height="56" rx="13" transform="rotate(45 50 50)" strokeWidth="7" />
+            <circle cx="48.5" cy="55" r="10.5" strokeWidth="6.5" />
+            <path d="M59 41.5 V 68.5" strokeWidth="6.5" />
+          </g>
+        </svg>
+      ) : (
+        <img src={BASE + 'ambipar-a-verde.png'} alt="" onError={() => setFalla(true)} />
+      )}
     </div>
   );
 }
 
-const inputBase = {
-  width: '100%', boxSizing: 'border-box', padding: '9px 11px',
-  borderRadius: 6, border: `1px solid ${COLORS.border}`,
-  fontSize: 13.5, fontFamily: 'inherit', color: COLORS.ink,
-  background: '#fff', outline: 'none',
-};
-const inputAuto = {
-  ...inputBase, background: COLORS.creamDark, color: COLORS.gray, cursor: 'not-allowed',
-};
-
-function TextInput(props) {
-  const { auto, ...rest } = props;
-  return <input {...rest} style={auto ? inputAuto : inputBase} readOnly={auto || rest.readOnly} />;
-}
-
-function Select({ auto, children, ...rest }) {
-  return <select {...rest} style={auto ? inputAuto : inputBase} disabled={auto || rest.disabled}>{children}</select>;
-}
-
-function RadioGroup({ options, value, onChange, disabled }) {
+/* ══════════════════════════════════════════════════════════════════════════
+   3 · PIEZAS DE FORMULARIO
+   ══════════════════════════════════════════════════════════════════════════ */
+function Field({ label, req, nota, auto, children }) {
   return (
-    <div style={{ display: 'flex', gap: 18 }}>
-      {options.map((opt) => (
-        <label key={opt} style={{
-          display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5,
-          color: disabled ? COLORS.gray : COLORS.ink, cursor: disabled ? 'default' : 'pointer',
-        }}>
-          <input type="radio" checked={value === opt} disabled={disabled}
-            onChange={() => onChange(opt)}
-            style={{ accentColor: COLORS.teal, width: 15, height: 15 }} />
-          {opt}
-        </label>
+    <div className="field">
+      <label>
+        {label}{req && <em>*</em>}
+        {nota && <i> — {nota}</i>}
+        {auto && <span className="auto-badge">automático</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Hint({ children }) { return <div className="hint">{children}</div>; }
+
+function Chips({ options, value, onChange, disabled }) {
+  return (
+    <div className="chips">
+      {options.map((o) => (
+        <button key={o} type="button" className="chip" disabled={disabled}
+          aria-pressed={value === o} onClick={() => onChange(o)}>{o}</button>
       ))}
     </div>
   );
 }
 
-function SectionCard({ color, title, subtitle, shortcut, children }) {
+/* Campo de solo lectura, para lo que el sistema completa por su cuenta. */
+function Auto({ value, placeholder }) {
+  return <input type="text" value={value || ''} readOnly placeholder={placeholder || '—'} />;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4 · BUSCADOR DE RESIDUO POR TIPO  [F2]
+   ══════════════════════════════════════════════════════════════════════════ */
+function BuscadorResiduo({ onClose, onSelect }) {
+  const [q, setQ] = useState('');
+
+  const resultados = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const out = [];
+    for (const pk of Object.keys(RESIDUOS_TREE)) {
+      for (const fk of Object.keys(RESIDUOS_TREE[pk])) {
+        for (const mk of Object.keys(RESIDUOS_TREE[pk][fk])) {
+          for (const tk of Object.keys(RESIDUOS_TREE[pk][fk][mk])) {
+            if (splitKey(tk).name.toLowerCase().includes(needle)) out.push({ pk, fk, mk, tk });
+            if (out.length >= 40) return out;
+          }
+        }
+      }
+    }
+    return out;
+  }, [q]);
+
   return (
-    <div style={{
-      background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 10,
-      marginBottom: 16, overflow: 'hidden',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '11px 16px', background: color, borderBottom: `1px solid ${COLORS.border}`,
-      }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.teal }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 1 }}>{subtitle}</div>}
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="kicker">Buscar residuo por tipo · F2</div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="Escriba, por ejemplo: aceite, cartón, lodo…" />
+          </div>
         </div>
-        {shortcut && (
-          <div style={{
-            fontSize: 10.5, color: COLORS.teal, background: '#fff', border: `1px solid ${COLORS.border}`,
-            borderRadius: 5, padding: '3px 8px', fontFamily: 'ui-monospace, monospace',
-          }}>{shortcut}</div>
-        )}
+        <div className="modal-body">
+          {resultados.length === 0 && (
+            <div className="empty-note" style={{ border: 0 }}>
+              {q.trim().length < 2 ? 'Escriba al menos 2 caracteres.' : 'Sin resultados para esa búsqueda.'}
+            </div>
+          )}
+          {resultados.map((r, i) => (
+            <div key={i} className="op" onClick={() => onSelect(r)}>
+              <b>{nameOf(r.tk)}</b>
+              <span>{nameOf(r.pk)} · {nameOf(r.fk)} · {nameOf(r.mk)}</span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div style={{ padding: 16 }}>{children}</div>
     </div>
   );
 }
 
-function Toast({ message, type }) {
-  if (!message) return null;
-  return (
-    <div style={{
-      position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-      background: type === 'error' ? COLORS.danger : COLORS.teal, color: '#fff',
-      padding: '11px 20px', borderRadius: 8, fontSize: 13.5, fontWeight: 600,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.25)', zIndex: 1000, maxWidth: 420, textAlign: 'center',
-    }}>{message}</div>
-  );
-}
-
-/* ============================== LOGIN ============================== */
+/* ══════════════════════════════════════════════════════════════════════════
+   5 · PANTALLA DE ACCESO
+   ══════════════════════════════════════════════════════════════════════════ */
 function LoginScreen({ onLogin }) {
-  const [user, setUser] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
-  const submit = async (e) => {
+  async function submit(e) {
     e.preventDefault();
-    if (!user) { setError('Seleccione su usuario.'); return; }
+    if (!usuario) { setError('Seleccione su usuario.'); return; }
     if (!pin.trim()) { setError('Ingrese su PIN.'); return; }
-
-    setError('');
-    setCargando(true);
+    setError(''); setCargando(true);
     try {
-      // La validación ocurre en el servidor, contra la hoja USUARIOS.
-      const sesion = await api.login(user.trim(), pin.trim());
-      onLogin({ usuario: sesion.usuario, pin: pin.trim(), nombre: sesion.nombre });
+      const s = await api.login(usuario.trim(), pin.trim());
+      onLogin({ usuario: s.usuario, pin: pin.trim(), nombre: s.nombre });
     } catch (err) {
       setError(err.message);
       setCargando(false);
     }
-  };
+  }
 
   return (
-    <div style={{
-      minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: `linear-gradient(160deg, ${COLORS.teal} 0%, #051A1D 100%)`,
-      fontFamily: "'Inter', system-ui, sans-serif", padding: 24,
-    }}>
-      <form onSubmit={submit} style={{
-        width: 360, background: COLORS.cream, borderRadius: 14, padding: '30px 28px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-      }}>
-        <div style={{
-          width: 40, height: 6, background: COLORS.lime, borderRadius: 3, marginBottom: 18,
-        }} />
-        <h1 style={{ margin: '0 0 4px', fontSize: 19, color: COLORS.teal, fontWeight: 800 }}>
-          Cotizaciones de Valorización
-        </h1>
-        <p style={{ margin: '0 0 22px', fontSize: 12.5, color: COLORS.gray, lineHeight: 1.5 }}>
-          Acceso restringido — equipo de Inteligencia Circular y Gerencia de Valorización.
-        </p>
+    <div className="login-wrap">
+      <MarcaDeAgua />
+      <form className="login-card" onSubmit={submit}>
+        <LogoAmbipar className="login-logo" />
+        <span className="lime-rule" />
+        <h1 className="premium-heading">Cotizaciones de Valorización</h1>
+        <p className="sub">Registro de cotizaciones de valorización y eliminación de residuos.</p>
 
-        <Field label="Usuario" required>
-          <Select value={user} onChange={(e) => setUser(e.target.value)} disabled={cargando}>
-            <option value="">Seleccione su usuario...</option>
+        <Field label="Usuario" req>
+          <select value={usuario} onChange={(e) => setUsuario(e.target.value)} disabled={cargando}>
+            <option value="">Seleccione su usuario…</option>
             {LISTAS.RESPONSABLE.map((r) => <option key={r} value={r}>{r}</option>)}
-          </Select>
+          </select>
         </Field>
 
-        <Field label="PIN de acceso" required>
-          <TextInput type="password" value={pin} onChange={(e) => setPin(e.target.value)}
-            placeholder="••••" disabled={cargando} />
+        <Field label="PIN de acceso" req>
+          <input type="password" value={pin} onChange={(e) => setPin(e.target.value)}
+            placeholder="••••" disabled={cargando} autoComplete="off" />
         </Field>
 
-        {error && <div style={{ color: COLORS.danger, fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
+        {error && <div className="login-error">{error}</div>}
 
-        <button type="submit" style={{
-          width: '100%', padding: '11px 0', border: 'none', borderRadius: 8,
-          background: COLORS.lime, color: COLORS.teal, fontWeight: 800, fontSize: 13.5,
-          cursor: 'pointer', marginTop: 6,
-        }} disabled={cargando}>{cargando ? 'Verificando...' : 'Ingresar'}</button>
+        <button type="submit" className="btn ancho" disabled={cargando}>
+          {cargando ? 'Verificando…' : 'Ingresar'}
+        </button>
 
-        <p style={{ fontSize: 10.5, color: COLORS.gray, marginTop: 16, lineHeight: 1.5 }}>
-          El usuario y el PIN se validan en el servidor, contra la hoja USUARIOS del
-          Google Sheet. Para revocar un acceso, cambie ACTIVO a NO en esa hoja.
+        <p className="login-pie">
+          El usuario y el PIN se validan contra la hoja USUARIOS de la base compartida.
+          Para revocar un acceso, cambie ACTIVO a NO en esa hoja.
         </p>
       </form>
     </div>
   );
 }
 
-/* ============================== BUSCADOR DE RESIDUO (F2) ============================== */
-function ResidueSearchModal({ onClose, onSelect }) {
-  const [q, setQ] = useState('');
-  const results = useMemo(() => {
-    if (q.trim().length < 2) return [];
-    const needle = q.toLowerCase();
-    const out = [];
-    for (const pk of Object.keys(RESIDUOS_TREE)) {
-      for (const fk of Object.keys(RESIDUOS_TREE[pk])) {
-        for (const mk of Object.keys(RESIDUOS_TREE[pk][fk])) {
-          for (const tk of Object.keys(RESIDUOS_TREE[pk][fk][mk])) {
-            const tName = splitKey(tk).name;
-            if (tName.toLowerCase().includes(needle)) {
-              out.push({ pk, fk, mk, tk });
-            }
-          }
-        }
-      }
-    }
-    return out.slice(0, 30);
-  }, [q]);
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(3,32,36,0.55)', zIndex: 900,
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '10vh',
-    }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: 480, maxHeight: '70vh', background: '#fff', borderRadius: 12, overflow: 'hidden',
-        boxShadow: '0 30px 80px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column',
-      }}>
-        <div style={{ padding: 14, borderBottom: `1px solid ${COLORS.border}` }}>
-          <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 6 }}>
-            Buscador de residuos por TIPO · [F2]
-          </div>
-          <TextInput autoFocus value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder="Escriba, ej: neumático, aceite, cartón..." />
-        </div>
-        <div style={{ overflowY: 'auto' }}>
-          {results.length === 0 && (
-            <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>
-              {q.trim().length < 2 ? 'Escriba al menos 2 caracteres.' : 'Sin resultados.'}
-            </div>
-          )}
-          {results.map((r, i) => {
-            const p = splitKey(r.pk), f = splitKey(r.fk), m = splitKey(r.mk), t = splitKey(r.tk);
-            return (
-              <div key={i} onClick={() => onSelect(r)} style={{
-                padding: '10px 14px', cursor: 'pointer', fontSize: 12.5,
-                borderBottom: `1px solid ${COLORS.creamDark}`,
-              }}
-                onMouseEnter={(e) => e.currentTarget.style.background = COLORS.cream}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>
-                <div style={{ fontWeight: 700, color: COLORS.teal }}>{t.name}</div>
-                <div style={{ color: COLORS.gray, fontSize: 11 }}>{p.name} · {f.name} · {m.name}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============================== FORMULARIO ============================== */
-const EMPTY_LOGISTICA = {
-  tipoServicio: 'En planta', canalCotizacion: 'Correo', comunaOrigen: '', origen: '',
+/* ══════════════════════════════════════════════════════════════════════════
+   6 · FORMULARIO DE COTIZACIÓN
+   ══════════════════════════════════════════════════════════════════════════ */
+const VACIO_LOG = { tipoServicio: 'En planta', canalCotizacion: 'Correo', comunaOrigen: '', origen: '' };
+const VACIO_EST = {
+  nombreFantasia: '', comunaEstablecimiento: '', sistemaDeclaracion: '', codigoEstablecimiento: '',
+  razonSocial: '', rut: '', nombreEstablecimiento: '', regionEstablecimiento: '', esNuevo: false,
 };
-const EMPTY_ESTABLECIMIENTO = {
-  nombreFantasia: '', comunaEstablecimiento: '', sistemaDeclaracion: '',
-  codigoEstablecimiento: '', razonSocial: '', rut: '', nombreEstablecimiento: '',
-  regionEstablecimiento: '', esNuevo: false,
-};
-const EMPTY_RESIDUO = { pk: '', fk: '', mk: '', tk: '', ek: '', fok: '', otroNombre: '' };
-const EMPTY_COMERCIAL = { tipoNegocio: 'Venta', unidad: '', valor: '' };
-const EMPTY_ADJUNTOS = { documentos: '', comentarios: '' };
+const VACIO_RES = { pk: '', fk: '', mk: '', tk: '', ek: '', fok: '', otroNombre: '' };
+const VACIO_COM = { tipoNegocio: 'Venta', unidad: '', valor: '' };
+const VACIO_ADJ = { documentos: '', comentarios: '' };
 
-function QuoteForm({ user, destinatarios, onSaveQuote, onAddDestinatario, notify }) {
-  const [logistica, setLogistica] = useState(EMPTY_LOGISTICA);
-  const [establecimiento, setEstablecimiento] = useState(EMPTY_ESTABLECIMIENTO);
-  const [residuo, setResiduo] = useState(EMPTY_RESIDUO);
-  const [comercial, setComercial] = useState(EMPTY_COMERCIAL);
-  const [adjuntos, setAdjuntos] = useState(EMPTY_ADJUNTOS);
-  const [showSearch, setShowSearch] = useState(false);
+function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, notify }) {
+  const [log, setLog] = useState(VACIO_LOG);
+  const [est, setEst] = useState(VACIO_EST);
+  const [res, setRes] = useState(VACIO_RES);
+  const [com, setCom] = useState(VACIO_COM);
+  const [adj, setAdj] = useState(VACIO_ADJ);
+  const [buscando, setBuscando] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [fantasiaQuery, setFantasiaQuery] = useState('');
-  const formRef = useRef(null);
+  const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'F2') { e.preventDefault(); setShowSearch(true); }
-      if (e.key === 'Escape') { setShowSearch(false); }
-      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-    // eslint-disable-next-line
-  }, [logistica, establecimiento, residuo, comercial, adjuntos]);
-
-  const nombresFantasia = useMemo(
-    () => [...new Set(destinatarios.map((d) => d.NOMBRE_FANTASIA))].sort(),
+  /* ---------- establecimiento ---------- */
+  const nombres = useMemo(
+    () => [...new Set(destinatarios.map((d) => d.NOMBRE_FANTASIA).filter(Boolean))].sort(),
     [destinatarios]
   );
-  const matchesEstablecimiento = fantasiaQuery.length > 0
-    ? nombresFantasia.filter((n) => n.toLowerCase().includes(fantasiaQuery.toLowerCase()))
+  const sugerencias = query.trim()
+    ? nombres.filter((n) => n.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8)
     : [];
-  const exactMatch = nombresFantasia.includes(establecimiento.nombreFantasia);
 
-  const comunasParaFantasia = useMemo(() => {
-    if (!establecimiento.nombreFantasia) return [];
+  const comunasDe = useMemo(() => {
+    if (!est.nombreFantasia) return [];
     return [...new Set(destinatarios
-      .filter((d) => d.NOMBRE_FANTASIA === establecimiento.nombreFantasia)
-      .map((d) => d.COMUNA_ESTABLECIMIENTO))];
-  }, [destinatarios, establecimiento.nombreFantasia]);
+      .filter((d) => d.NOMBRE_FANTASIA === est.nombreFantasia)
+      .map((d) => d.COMUNA_ESTABLECIMIENTO).filter(Boolean))];
+  }, [destinatarios, est.nombreFantasia]);
 
-  const sistemasParaSeleccion = useMemo(() => {
-    if (!establecimiento.nombreFantasia || !establecimiento.comunaEstablecimiento) return [];
+  const sistemasDe = useMemo(() => {
+    if (!est.nombreFantasia || !est.comunaEstablecimiento) return [];
     return [...new Set(destinatarios
-      .filter((d) => d.NOMBRE_FANTASIA === establecimiento.nombreFantasia
-        && d.COMUNA_ESTABLECIMIENTO === establecimiento.comunaEstablecimiento)
-      .map((d) => d.SISTEMA_DECLARACION))];
-  }, [destinatarios, establecimiento.nombreFantasia, establecimiento.comunaEstablecimiento]);
+      .filter((d) => d.NOMBRE_FANTASIA === est.nombreFantasia
+        && d.COMUNA_ESTABLECIMIENTO === est.comunaEstablecimiento)
+      .map((d) => d.SISTEMA_DECLARACION).filter(Boolean))];
+  }, [destinatarios, est.nombreFantasia, est.comunaEstablecimiento]);
 
-  function pickFantasia(name) {
-    const isNew = !nombresFantasia.includes(name);
-    setEstablecimiento({ ...EMPTY_ESTABLECIMIENTO, nombreFantasia: name, esNuevo: isNew });
-    setFantasiaQuery('');
-  }
-
-  function pickComuna(comuna) {
-    setEstablecimiento((prev) => ({ ...prev, comunaEstablecimiento: comuna, sistemaDeclaracion: '', codigoEstablecimiento: '', razonSocial: '', rut: '', nombreEstablecimiento: '', regionEstablecimiento: '' }));
-  }
-
-  function pickSistema(sistema) {
-    const row = destinatarios.find((d) =>
-      d.NOMBRE_FANTASIA === establecimiento.nombreFantasia &&
-      d.COMUNA_ESTABLECIMIENTO === establecimiento.comunaEstablecimiento &&
-      d.SISTEMA_DECLARACION === sistema);
-    if (row) {
-      setEstablecimiento((prev) => ({
-        ...prev, sistemaDeclaracion: sistema,
-        codigoEstablecimiento: row.CODIGO_ESTABLECIMIENTO, razonSocial: row.RAZON_SOCIAL,
-        rut: row.RUT, nombreEstablecimiento: row.NOMBRE_ESTABLECIMIENTO,
-        regionEstablecimiento: row.REGION_ESTABLECIMIENTO,
-      }));
+  function elegirFantasia(nombre) {
+    const esNuevo = !nombres.includes(nombre);
+    setEst({ ...VACIO_EST, nombreFantasia: nombre, esNuevo });
+    setQuery('');
+    /* Si solo hay una comuna, se elige sola: un clic menos. */
+    if (!esNuevo) {
+      const cs = [...new Set(destinatarios.filter((d) => d.NOMBRE_FANTASIA === nombre)
+        .map((d) => d.COMUNA_ESTABLECIMIENTO).filter(Boolean))];
+      if (cs.length === 1) setTimeout(() => elegirComuna(cs[0], nombre), 0);
     }
   }
 
-  // Cascada de residuo
-  const pOptions = Object.keys(RESIDUOS_TREE);
-  const fOptions = residuo.pk ? Object.keys(RESIDUOS_TREE[residuo.pk]) : [];
-  const mOptions = residuo.pk && residuo.fk ? Object.keys(RESIDUOS_TREE[residuo.pk][residuo.fk]) : [];
-  const tOptions = residuo.pk && residuo.fk && residuo.mk ? Object.keys(RESIDUOS_TREE[residuo.pk][residuo.fk][residuo.mk]) : [];
-  const eOptions = residuo.pk && residuo.fk && residuo.mk && residuo.tk ? Object.keys(RESIDUOS_TREE[residuo.pk][residuo.fk][residuo.mk][residuo.tk]) : [];
-  const foOptions = residuo.pk && residuo.fk && residuo.mk && residuo.tk && residuo.ek
-    ? RESIDUOS_TREE[residuo.pk][residuo.fk][residuo.mk][residuo.tk][residuo.ek] : [];
+  function elegirComuna(comuna, fantasia) {
+    const nf = fantasia || est.nombreFantasia;
+    setEst((p) => ({ ...p, nombreFantasia: nf, comunaEstablecimiento: comuna, sistemaDeclaracion: '',
+      codigoEstablecimiento: '', razonSocial: '', rut: '', nombreEstablecimiento: '', regionEstablecimiento: '' }));
+    const ss = [...new Set(destinatarios
+      .filter((d) => d.NOMBRE_FANTASIA === nf && d.COMUNA_ESTABLECIMIENTO === comuna)
+      .map((d) => d.SISTEMA_DECLARACION).filter(Boolean))];
+    if (ss.length === 1) setTimeout(() => elegirSistema(ss[0], nf, comuna), 0);
+  }
+
+  function elegirSistema(sistema, fantasia, comuna) {
+    const nf = fantasia || est.nombreFantasia;
+    const cm = comuna || est.comunaEstablecimiento;
+    const fila = destinatarios.find((d) => d.NOMBRE_FANTASIA === nf
+      && d.COMUNA_ESTABLECIMIENTO === cm && d.SISTEMA_DECLARACION === sistema);
+    setEst((p) => ({
+      ...p, nombreFantasia: nf, comunaEstablecimiento: cm, sistemaDeclaracion: sistema,
+      codigoEstablecimiento: fila ? fila.CODIGO_ESTABLECIMIENTO : '',
+      razonSocial: fila ? fila.RAZON_SOCIAL : '',
+      rut: fila ? fila.RUT : '',
+      nombreEstablecimiento: fila ? fila.NOMBRE_ESTABLECIMIENTO : '',
+      regionEstablecimiento: fila ? fila.REGION_ESTABLECIMIENTO : '',
+    }));
+  }
+
+  /* ---------- cascada del residuo ---------- */
+  const T = RESIDUOS_TREE;
+  const opP = Object.keys(T);
+  const opF = res.pk ? Object.keys(T[res.pk]) : [];
+  const opM = res.fk ? Object.keys(T[res.pk][res.fk]) : [];
+  const opT = res.mk ? Object.keys(T[res.pk][res.fk][res.mk]) : [];
+  const opE = res.tk ? Object.keys(T[res.pk][res.fk][res.mk][res.tk]) : [];
+  const opFo = res.ek ? T[res.pk][res.fk][res.mk][res.tk][res.ek] : [];
 
   const codRes = useMemo(() => {
-    if (!(residuo.pk && residuo.fk && residuo.mk && residuo.tk && residuo.ek && residuo.fok)) return '';
-    return [residuo.pk, residuo.fk, residuo.mk, residuo.tk, residuo.ek, residuo.fok]
-      .map((k) => splitKey(k).code).join('-');
-  }, [residuo]);
+    const { pk, fk, mk, tk, ek, fok } = res;
+    if (!(pk && fk && mk && tk && ek && fok)) return '';
+    return [pk, fk, mk, tk, ek, fok].map((k) => splitKey(k).code).join('-');
+  }, [res]);
 
-  function onResidueSearchSelect(r) {
-    setResiduo({ ...EMPTY_RESIDUO, pk: r.pk, fk: r.fk, mk: r.mk, tk: r.tk });
-    setShowSearch(false);
+  /* ---------- guardar ---------- */
+  function limpiarParcial() {
+    /* Los apartados 1 y 2 quedan cargados: lo habitual es registrar varias
+       cotizaciones seguidas del mismo establecimiento. */
+    setRes(VACIO_RES); setCom(VACIO_COM); setAdj(VACIO_ADJ);
+  }
+  function limpiarTodo() {
+    setLog(VACIO_LOG); setEst(VACIO_EST); setQuery('');
+    setRes(VACIO_RES); setCom(VACIO_COM); setAdj(VACIO_ADJ);
   }
 
-  function resetAfterSave() {
-    // Apartados 1 y 2 se mantienen precargados para la siguiente carga (según especificación).
-    setResiduo(EMPTY_RESIDUO);
-    setComercial(EMPTY_COMERCIAL);
-    setAdjuntos(EMPTY_ADJUNTOS);
-  }
-
-  function validate() {
-    if (!residuo.pk || !residuo.fk || !residuo.mk || !residuo.tk || !residuo.ek || !residuo.fok) {
-      return 'Complete la caracterización del residuo (Apartado 3).';
-    }
-    if (!establecimiento.nombreFantasia) return 'Ingrese el nombre de fantasía del establecimiento.';
-    if (establecimiento.esNuevo && (!establecimiento.razonSocial || !establecimiento.rut || !establecimiento.comunaEstablecimiento)) {
-      return 'Complete razón social, RUT y comuna del nuevo destinatario.';
-    }
-    if (logistica.tipoServicio === 'Con retiro' && !logistica.comunaOrigen) {
-      return 'Seleccione la comuna de origen (servicio con retiro).';
-    }
-    if (!comercial.unidad || comercial.valor === '') return 'Complete la condición comercial (Apartado 4).';
+  function validar() {
+    if (!est.nombreFantasia) return 'Falta el establecimiento (Apartado 2).';
+    if (est.esNuevo && (!est.razonSocial || !est.rut || !est.comunaEstablecimiento))
+      return 'Del destinatario nuevo faltan razón social, RUT o comuna.';
+    if (!est.esNuevo && !est.comunaEstablecimiento) return 'Falta la comuna del establecimiento.';
+    if (!codRes) return 'Falta completar la caracterización del residuo (Apartado 3).';
+    if (log.tipoServicio === 'Con retiro' && !log.comunaOrigen)
+      return 'Un servicio con retiro necesita la comuna de origen.';
+    if (!com.unidad) return 'Falta la unidad de la condición comercial (Apartado 4).';
+    if (com.valor === '' || isNaN(Number(com.valor))) return 'Falta el valor de la condición comercial.';
     return null;
   }
 
-  async function handleSave() {
-    const err = validate();
-    if (err) { notify(err, 'error'); return; }
-
+  const handleSave = useCallback(async () => {
+    const err = validar();
+    if (err) { notify(err, true); return; }
     setGuardando(true);
     try {
-    if (establecimiento.esNuevo) {
-      await onAddDestinatario({
-        NOMBRE_FANTASIA: establecimiento.nombreFantasia,
-        SISTEMA_DECLARACION: establecimiento.sistemaDeclaracion || 'N/A',
-        CODIGO_ESTABLECIMIENTO: establecimiento.codigoEstablecimiento || '(pendiente)',
-        RAZON_SOCIAL: establecimiento.razonSocial,
-        RUT: establecimiento.rut,
-        NOMBRE_ESTABLECIMIENTO: establecimiento.nombreEstablecimiento || establecimiento.razonSocial,
-        COMUNA_ESTABLECIMIENTO: establecimiento.comunaEstablecimiento,
-        REGION_ESTABLECIMIENTO: REGION_BY_COMUNA[establecimiento.comunaEstablecimiento] || '',
-      });
-    }
-
-    const record = {
-      FECHA: todayISO(),
-      TIPO_SERVICIO: logistica.tipoServicio,
-      CANAL_COTIZACION: logistica.canalCotizacion,
-      ORIGEN: logistica.origen,
-      COMUNA_ORIGEN: logistica.comunaOrigen,
-      REGION_ORIGEN: REGION_BY_COMUNA[logistica.comunaOrigen] || '',
-      NOMBRE_FANTASIA: establecimiento.nombreFantasia,
-      COMUNA_ESTABLECIMIENTO: establecimiento.comunaEstablecimiento,
-      REGION_ESTABLECIMIENTO: establecimiento.esNuevo ? (REGION_BY_COMUNA[establecimiento.comunaEstablecimiento] || '') : establecimiento.regionEstablecimiento,
-      SISTEMA_DECLARACION: establecimiento.sistemaDeclaracion,
-      CODIGO_ESTABLECIMIENTO: establecimiento.codigoEstablecimiento,
-      RAZON_SOCIAL: establecimiento.razonSocial,
-      RUT: establecimiento.rut,
-      NOMBRE_ESTABLECIMIENTO: establecimiento.nombreEstablecimiento,
-      COD_RES: codRes,
-      PELIGROSIDAD: splitKey(residuo.pk).name,
-      FAMILIA: splitKey(residuo.fk).name,
-      MATERIAL: splitKey(residuo.mk).name,
-      TIPO: splitKey(residuo.tk).name,
-      ESTADO: splitKey(residuo.ek).name,
-      FORMATO: splitKey(residuo.fok).name,
-      OTRO_NOMBRE: residuo.otroNombre,
-      TIPO_NEGOCIO: comercial.tipoNegocio,
-      VALOR: Number(comercial.valor),
-      UNIDAD: comercial.unidad,
-      RESPONSABLE: user,
-      DOCUMENTOS: adjuntos.documentos,
-      COMENTARIOS: adjuntos.comentarios,
-    };
-
-    const id = await onSaveQuote(record);
-    notify(`Cotización ${id} guardada en la base de datos.`, 'ok');
-    resetAfterSave();
-    } catch (err) {
-      // El formulario NO se limpia: así no se pierde lo escrito y se
-      // puede reintentar.
-      notify('No se pudo guardar: ' + err.message, 'error');
+      if (est.esNuevo) {
+        await onAddDestinatario({
+          NOMBRE_FANTASIA: est.nombreFantasia,
+          SISTEMA_DECLARACION: est.sistemaDeclaracion || 'N/A',
+          CODIGO_ESTABLECIMIENTO: est.codigoEstablecimiento || '(pendiente)',
+          RAZON_SOCIAL: est.razonSocial,
+          RUT: est.rut,
+          NOMBRE_ESTABLECIMIENTO: est.nombreEstablecimiento || est.razonSocial,
+          COMUNA_ESTABLECIMIENTO: est.comunaEstablecimiento,
+          REGION_ESTABLECIMIENTO: REGION_BY_COMUNA[est.comunaEstablecimiento] || '',
+        });
+      }
+      const registro = {
+        TIPO_SERVICIO: log.tipoServicio,
+        CANAL_COTIZACION: log.canalCotizacion,
+        ORIGEN: log.origen,
+        COMUNA_ORIGEN: log.comunaOrigen,
+        REGION_ORIGEN: REGION_BY_COMUNA[log.comunaOrigen] || '',
+        NOMBRE_FANTASIA: est.nombreFantasia,
+        COMUNA_ESTABLECIMIENTO: est.comunaEstablecimiento,
+        REGION_ESTABLECIMIENTO: est.esNuevo
+          ? (REGION_BY_COMUNA[est.comunaEstablecimiento] || '') : est.regionEstablecimiento,
+        SISTEMA_DECLARACION: est.sistemaDeclaracion,
+        CODIGO_ESTABLECIMIENTO: est.codigoEstablecimiento,
+        RAZON_SOCIAL: est.razonSocial,
+        RUT: est.rut,
+        NOMBRE_ESTABLECIMIENTO: est.nombreEstablecimiento,
+        COD_RES: codRes,
+        PELIGROSIDAD: nameOf(res.pk),
+        FAMILIA: nameOf(res.fk),
+        MATERIAL: nameOf(res.mk),
+        TIPO: nameOf(res.tk),
+        ESTADO: nameOf(res.ek),
+        FORMATO: nameOf(res.fok),
+        OTRO_NOMBRE: res.otroNombre,
+        TIPO_NEGOCIO: com.tipoNegocio,
+        VALOR: Number(com.valor),
+        UNIDAD: com.unidad,
+        DOCUMENTOS: adj.documentos,
+        COMENTARIOS: adj.comentarios,
+      };
+      const id = await onSaveQuote(registro);
+      notify(`Cotización ${id} guardada en la base compartida.`);
+      limpiarParcial();
+    } catch (e) {
+      /* No se limpia nada: así no se pierde lo escrito y se puede reintentar. */
+      notify('No se pudo guardar: ' + e.message, true);
     } finally {
       setGuardando(false);
     }
-  }
+  }, [log, est, res, com, adj, codRes, onSaveQuote, onAddDestinatario, notify]);
+
+  /* ---------- atajos ---------- */
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === 'F2') { e.preventDefault(); setBuscando(true); }
+      if (e.key === 'Escape') setBuscando(false);
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [handleSave]);
+
+  const conRetiro = log.tipoServicio === 'Con retiro';
 
   return (
-    <div ref={formRef} style={{ maxWidth: 720, margin: '0 auto' }}>
-      {showSearch && <ResidueSearchModal onClose={() => setShowSearch(false)} onSelect={onResidueSearchSelect} />}
+    <>
+      {buscando && (
+        <BuscadorResiduo onClose={() => setBuscando(false)}
+          onSelect={(r) => { setRes({ ...VACIO_RES, ...r }); setBuscando(false); }} />
+      )}
 
-      <SectionCard color="#EAF3EC" title="Apartado 1 · Logística y control general"
-        subtitle="Fecha, ID y responsable se generan automáticamente al guardar."
-        shortcut="Tab avanza · F1 clona 1+2">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 4 }}>
-          <Field label="Fecha" auto><TextInput auto value={todayISO()} /></Field>
-          <Field label="Responsable" auto><TextInput auto value={user} /></Field>
+      <div className="page-head">
+        <span className="lime-rule" />
+        <h1 className="premium-heading">Nueva cotización</h1>
+        <p className="bajada">
+          Los campos marcados con <b>*</b> son obligatorios. El código de residuo, el ID
+          y la fecha se generan solos. <b>F2</b> busca un residuo por su tipo;
+          <b> Ctrl+Enter</b> guarda.
+        </p>
+      </div>
+
+      {/* ══════════ 01 · LOGÍSTICA ══════════ */}
+      <section className="card">
+        <div className="card-head">
+          <span className="fmtNum">01</span>
+          <h2>Logística y control general</h2>
+          <span className="tag">{todayISO()} · {sesion.usuario}</span>
         </div>
-        <Field label="Tipo de servicio" required>
-          <RadioGroup options={LISTAS.TIPO_SERVICIO} value={logistica.tipoServicio}
-            onChange={(v) => setLogistica((p) => ({ ...p, tipoServicio: v, comunaOrigen: v === 'En planta' ? '' : p.comunaOrigen, origen: v === 'En planta' ? '' : p.origen }))} />
-        </Field>
-        <Field label="Canal de cotización" required>
-          <RadioGroup options={LISTAS.CANAL_COTIZACION} value={logistica.canalCotizacion}
-            onChange={(v) => setLogistica((p) => ({ ...p, canalCotizacion: v }))} />
-        </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Comuna de origen" required={logistica.tipoServicio === 'Con retiro'}
-            hint={logistica.tipoServicio === 'En planta' ? 'No aplica en planta.' : undefined}>
-            <Select disabled={logistica.tipoServicio === 'En planta'} value={logistica.comunaOrigen}
-              onChange={(e) => setLogistica((p) => ({ ...p, comunaOrigen: e.target.value }))}>
-              <option value="">Seleccione comuna...</option>
-              {COMUNAS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
+        <p className="card-note">
+          La fecha, el correlativo y el responsable los asigna el sistema al guardar.
+        </p>
+
+        <div className="form-section">Cómo se cotiza</div>
+        <div className="row2">
+          <Field label="Tipo de servicio" req>
+            <Chips options={LISTAS.TIPO_SERVICIO} value={log.tipoServicio}
+              onChange={(v) => setLog((p) => ({ ...p, tipoServicio: v,
+                comunaOrigen: v === 'En planta' ? '' : p.comunaOrigen,
+                origen: v === 'En planta' ? '' : p.origen }))} />
           </Field>
-          <Field label="Región de origen" auto><TextInput auto value={REGION_BY_COMUNA[logistica.comunaOrigen] || ''} /></Field>
+          <Field label="Canal de cotización" req>
+            <Chips options={LISTAS.CANAL_COTIZACION} value={log.canalCotizacion}
+              onChange={(v) => setLog((p) => ({ ...p, canalCotizacion: v }))} />
+          </Field>
         </div>
-        <Field label="Origen (dirección / referencia)" hint="Manual, solo si es con retiro.">
-          <TextInput disabled={logistica.tipoServicio === 'En planta'} value={logistica.origen}
-            onChange={(e) => setLogistica((p) => ({ ...p, origen: e.target.value }))} />
-        </Field>
-      </SectionCard>
 
-      <SectionCard color="#EAF0F3" title="Apartado 2 · Identificación del establecimiento"
-        subtitle="Escriba el nombre de fantasía; si ya existe, el resto se completa solo.">
-        <Field label="Nombre de fantasía" required>
-          <TextInput
-            value={establecimiento.nombreFantasia || fantasiaQuery}
-            onChange={(e) => { setFantasiaQuery(e.target.value); setEstablecimiento(EMPTY_ESTABLECIMIENTO); }}
-            placeholder="Escriba para buscar empresa..." />
-          {fantasiaQuery && matchesEstablecimiento.length > 0 && (
-            <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 6, marginTop: 4, maxHeight: 160, overflowY: 'auto', background: '#fff' }}>
-              {matchesEstablecimiento.slice(0, 8).map((n) => (
-                <div key={n} onClick={() => pickFantasia(n)} style={{ padding: '7px 10px', fontSize: 12.5, cursor: 'pointer' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = COLORS.cream}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}>{n}</div>
-              ))}
-            </div>
-          )}
-          {fantasiaQuery && matchesEstablecimiento.length === 0 && (
-            <div style={{ marginTop: 6, fontSize: 12, color: COLORS.gray }}>
-              Sin coincidencias.{' '}
-              <span style={{ color: COLORS.teal, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
-                onClick={() => pickFantasia(fantasiaQuery)}>
-                Registrar "{fantasiaQuery}" como nuevo destinatario
-              </span>
-            </div>
-          )}
-        </Field>
-
-        {establecimiento.nombreFantasia && !establecimiento.esNuevo && (
+        <div className="form-section">Origen del residuo</div>
+        {!conRetiro && (
+          <div className="aviso">
+            En un servicio <b>en planta</b> el cliente lleva el residuo, así que no
+            corresponde indicar origen. Cambie a <b>Con retiro</b> si hay que ir a buscarlo.
+          </div>
+        )}
+        {conRetiro && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Comuna del establecimiento" required>
-                <Select value={establecimiento.comunaEstablecimiento} onChange={(e) => pickComuna(e.target.value)}>
-                  <option value="">Seleccione...</option>
-                  {comunasParaFantasia.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
+            <div className="row2">
+              <Field label="Comuna de origen" req>
+                <select value={log.comunaOrigen}
+                  onChange={(e) => setLog((p) => ({ ...p, comunaOrigen: e.target.value }))}>
+                  <option value="">Seleccione comuna…</option>
+                  {COMUNAS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
               </Field>
-              <Field label="Sistema de declaración" required>
-                <Select disabled={!establecimiento.comunaEstablecimiento} value={establecimiento.sistemaDeclaracion} onChange={(e) => pickSistema(e.target.value)}>
-                  <option value="">Seleccione...</option>
-                  {sistemasParaSeleccion.map((s) => <option key={s} value={s}>{s}</option>)}
-                </Select>
+              <Field label="Región de origen" auto>
+                <Auto value={REGION_BY_COMUNA[log.comunaOrigen]} placeholder="Según la comuna" />
               </Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Código de establecimiento" auto><TextInput auto value={establecimiento.codigoEstablecimiento} /></Field>
-              <Field label="RUT" auto><TextInput auto value={establecimiento.rut} /></Field>
+            <Field label="Dirección o referencia" nota="opcional">
+              <input value={log.origen} onChange={(e) => setLog((p) => ({ ...p, origen: e.target.value }))}
+                placeholder="Ej: Av. Industrial 1234, bodega 5" />
+            </Field>
+          </>
+        )}
+      </section>
+
+      {/* ══════════ 02 · ESTABLECIMIENTO ══════════ */}
+      <section className="card">
+        <div className="card-head">
+          <span className="fmtNum">02</span>
+          <h2>Establecimiento de destino</h2>
+          {est.nombreFantasia && (
+            <span className="tag">{est.esNuevo ? 'NUEVO' : 'EN LA BASE'}</span>
+          )}
+        </div>
+        <p className="card-note">
+          Escriba el nombre de fantasía. Si ya está en la base, el resto se completa solo.
+        </p>
+
+        <div className="form-section">Identificación</div>
+        <Field label="Nombre de fantasía" req>
+          <div className="ac-wrap">
+            <input value={est.nombreFantasia || query}
+              onChange={(e) => { setQuery(e.target.value); setEst(VACIO_EST); }}
+              placeholder="Escriba para buscar…" autoComplete="off" />
+            {sugerencias.length > 0 && (
+              <div className="ac-list">
+                {sugerencias.map((n) => (
+                  <div key={n} onClick={() => elegirFantasia(n)}>{n}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          {query.trim() && sugerencias.length === 0 && (
+            <div className="ac-new">
+              Sin coincidencias.{' '}
+              <button type="button" onClick={() => elegirFantasia(query.trim())}>
+                Registrar «{query.trim()}» como destinatario nuevo
+              </button>
             </div>
-            <Field label="Razón social" auto><TextInput auto value={establecimiento.razonSocial} /></Field>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Nombre del establecimiento" auto><TextInput auto value={establecimiento.nombreEstablecimiento} /></Field>
-              <Field label="Región del establecimiento" auto><TextInput auto value={establecimiento.regionEstablecimiento} /></Field>
+          )}
+        </Field>
+
+        {est.nombreFantasia && !est.esNuevo && (
+          <>
+            <div className="row2">
+              <Field label="Comuna del establecimiento" req>
+                <select value={est.comunaEstablecimiento} onChange={(e) => elegirComuna(e.target.value)}>
+                  <option value="">Seleccione…</option>
+                  {comunasDe.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="Sistema de declaración" req>
+                <select value={est.sistemaDeclaracion} disabled={!est.comunaEstablecimiento}
+                  onChange={(e) => elegirSistema(e.target.value)}>
+                  <option value="">Seleccione…</option>
+                  {sistemasDe.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            <div className="form-section">Datos que trae la base</div>
+            <div className="row2">
+              <Field label="Razón social" auto><Auto value={est.razonSocial} /></Field>
+              <Field label="RUT" auto><Auto value={est.rut} /></Field>
+            </div>
+            <div className="row3">
+              <Field label="Código establecimiento" auto><Auto value={est.codigoEstablecimiento} /></Field>
+              <Field label="Nombre establecimiento" auto><Auto value={est.nombreEstablecimiento} /></Field>
+              <Field label="Región" auto><Auto value={est.regionEstablecimiento} /></Field>
             </div>
           </>
         )}
 
-        {establecimiento.esNuevo && (
-          <div style={{ background: '#FFF7E6', border: '1px solid #E8CE8B', borderRadius: 8, padding: 12, marginTop: 4 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#7A5A00', marginBottom: 10 }}>
-              Nuevo destinatario — se agregará a la base de datos DESTINATARIOS al guardar.
+        {est.esNuevo && (
+          <>
+            <div className="aviso nuevo">
+              <b>Destinatario nuevo.</b> Al guardar la cotización se agrega a la base
+              compartida y queda disponible para todo el equipo.
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Razón social" required>
-                <TextInput value={establecimiento.razonSocial} onChange={(e) => setEstablecimiento((p) => ({ ...p, razonSocial: e.target.value }))} />
+            <div className="form-section">Datos del nuevo destinatario</div>
+            <div className="row2">
+              <Field label="Razón social" req>
+                <input value={est.razonSocial}
+                  onChange={(e) => setEst((p) => ({ ...p, razonSocial: e.target.value }))} />
               </Field>
-              <Field label="RUT" required>
-                <TextInput value={establecimiento.rut} onChange={(e) => setEstablecimiento((p) => ({ ...p, rut: e.target.value }))} placeholder="12345678-9" />
+              <Field label="RUT" req>
+                <input value={est.rut} placeholder="12345678-9"
+                  onChange={(e) => setEst((p) => ({ ...p, rut: e.target.value }))} />
               </Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Comuna del establecimiento" required>
-                <Select value={establecimiento.comunaEstablecimiento}
-                  onChange={(e) => setEstablecimiento((p) => ({ ...p, comunaEstablecimiento: e.target.value }))}>
-                  <option value="">Seleccione...</option>
+            <div className="row2">
+              <Field label="Comuna del establecimiento" req>
+                <select value={est.comunaEstablecimiento}
+                  onChange={(e) => setEst((p) => ({ ...p, comunaEstablecimiento: e.target.value }))}>
+                  <option value="">Seleccione…</option>
                   {COMUNAS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
+                </select>
+                {est.comunaEstablecimiento && (
+                  <Hint>Región: {REGION_BY_COMUNA[est.comunaEstablecimiento]}</Hint>
+                )}
               </Field>
-              <Field label="Sistema de declaración" required>
-                <Select value={establecimiento.sistemaDeclaracion}
-                  onChange={(e) => setEstablecimiento((p) => ({ ...p, sistemaDeclaracion: e.target.value }))}>
-                  <option value="">Seleccione...</option>
+              <Field label="Sistema de declaración" req>
+                <select value={est.sistemaDeclaracion}
+                  onChange={(e) => setEst((p) => ({ ...p, sistemaDeclaracion: e.target.value }))}>
+                  <option value="">Seleccione…</option>
                   <option value="SINADER">SINADER</option>
                   <option value="N/A">N/A</option>
-                </Select>
+                </select>
               </Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Código de establecimiento" hint="Si aún no se conoce, se guarda como pendiente.">
-                <TextInput value={establecimiento.codigoEstablecimiento} onChange={(e) => setEstablecimiento((p) => ({ ...p, codigoEstablecimiento: e.target.value }))} />
+            <div className="row2">
+              <Field label="Código establecimiento" nota="si aún no se conoce, queda pendiente">
+                <input value={est.codigoEstablecimiento}
+                  onChange={(e) => setEst((p) => ({ ...p, codigoEstablecimiento: e.target.value }))} />
               </Field>
-              <Field label="Nombre del establecimiento">
-                <TextInput value={establecimiento.nombreEstablecimiento} onChange={(e) => setEstablecimiento((p) => ({ ...p, nombreEstablecimiento: e.target.value }))} />
+              <Field label="Nombre del establecimiento" nota="opcional">
+                <input value={est.nombreEstablecimiento}
+                  onChange={(e) => setEst((p) => ({ ...p, nombreEstablecimiento: e.target.value }))} />
               </Field>
             </div>
-          </div>
+          </>
         )}
-      </SectionCard>
+      </section>
 
-      <SectionCard color="#F1EAF3" title="Apartado 3 · Caracterización del residuo"
-        shortcut="F2 buscar por tipo">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Peligrosidad" required>
-            <Select value={residuo.pk} onChange={(e) => setResiduo({ ...EMPTY_RESIDUO, pk: e.target.value })}>
-              <option value="">Seleccione...</option>
-              {pOptions.map((k) => <option key={k} value={k}>{splitKey(k).name}</option>)}
-            </Select>
-          </Field>
-          <Field label="Familia" required>
-            <Select disabled={!residuo.pk} value={residuo.fk} onChange={(e) => setResiduo((p) => ({ ...EMPTY_RESIDUO, pk: p.pk, fk: e.target.value }))}>
-              <option value="">Seleccione...</option>
-              {fOptions.map((k) => <option key={k} value={k}>{splitKey(k).name}</option>)}
-            </Select>
-          </Field>
+      {/* ══════════ 03 · RESIDUO ══════════ */}
+      <section className="card">
+        <div className="card-head">
+          <span className="fmtNum">03</span>
+          <h2>Caracterización del residuo</h2>
+          <button className="link-btn" style={{ marginLeft: 'auto' }}
+            onClick={() => setBuscando(true)}>F2 · Buscar por tipo</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Material" required>
-            <Select disabled={!residuo.fk} value={residuo.mk} onChange={(e) => setResiduo((p) => ({ ...p, mk: e.target.value, tk: '', ek: '', fok: '' }))}>
-              <option value="">Seleccione...</option>
-              {mOptions.map((k) => <option key={k} value={k}>{splitKey(k).name}</option>)}
-            </Select>
-          </Field>
-          <Field label="Tipo" required>
-            <Select disabled={!residuo.mk} value={residuo.tk} onChange={(e) => setResiduo((p) => ({ ...p, tk: e.target.value, ek: '', fok: '' }))}>
-              <option value="">Seleccione...</option>
-              {tOptions.map((k) => <option key={k} value={k}>{splitKey(k).name}</option>)}
-            </Select>
-          </Field>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Estado" required>
-            <Select disabled={!residuo.tk} value={residuo.ek} onChange={(e) => setResiduo((p) => ({ ...p, ek: e.target.value, fok: '' }))}>
-              <option value="">Seleccione...</option>
-              {eOptions.map((k) => <option key={k} value={k}>{splitKey(k).name}</option>)}
-            </Select>
-          </Field>
-          <Field label="Formato" required>
-            <Select disabled={!residuo.ek} value={residuo.fok} onChange={(e) => setResiduo((p) => ({ ...p, fok: e.target.value }))}>
-              <option value="">Seleccione...</option>
-              {foOptions.map((k) => <option key={k} value={k}>{splitKey(k).name}</option>)}
-            </Select>
-          </Field>
-        </div>
-        <Field label="Código de residuo (COD_RES)" auto><TextInput auto value={codRes} /></Field>
-        <Field label="Otro nombre" hint="Manual, opcional (máx. 40 caracteres). Nombre comercial.">
-          <TextInput maxLength={40} value={residuo.otroNombre} onChange={(e) => setResiduo((p) => ({ ...p, otroNombre: e.target.value }))} />
-        </Field>
-      </SectionCard>
+        <p className="card-note">
+          Cada nivel filtra al siguiente. El código se arma con los seis segmentos.
+        </p>
 
-      <SectionCard color="#F5EDE5" title="Apartado 4 · Condición comercial">
-        <Field label="Tipo de negocio" required>
-          <RadioGroup options={LISTAS.TIPO_NEGOCIO} value={comercial.tipoNegocio}
-            onChange={(v) => setComercial((p) => ({ ...p, tipoNegocio: v }))} />
+        <div className="form-section">Clasificación</div>
+        <div className="row2">
+          <Field label="Peligrosidad" req>
+            <select value={res.pk} onChange={(e) => setRes({ ...VACIO_RES, pk: e.target.value })}>
+              <option value="">Seleccione…</option>
+              {opP.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+            </select>
+          </Field>
+          <Field label="Familia" req>
+            <select value={res.fk} disabled={!res.pk}
+              onChange={(e) => setRes((p) => ({ ...VACIO_RES, pk: p.pk, fk: e.target.value }))}>
+              <option value="">Seleccione…</option>
+              {opF.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="row2">
+          <Field label="Material" req>
+            <select value={res.mk} disabled={!res.fk}
+              onChange={(e) => setRes((p) => ({ ...p, mk: e.target.value, tk: '', ek: '', fok: '' }))}>
+              <option value="">Seleccione…</option>
+              {opM.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+            </select>
+          </Field>
+          <Field label="Tipo" req>
+            <select value={res.tk} disabled={!res.mk}
+              onChange={(e) => setRes((p) => ({ ...p, tk: e.target.value, ek: '', fok: '' }))}>
+              <option value="">Seleccione…</option>
+              {opT.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div className="form-section">Cómo viene</div>
+        <div className="row2">
+          <Field label="Estado" req>
+            <select value={res.ek} disabled={!res.tk}
+              onChange={(e) => setRes((p) => ({ ...p, ek: e.target.value, fok: '' }))}>
+              <option value="">Seleccione…</option>
+              {opE.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+            </select>
+          </Field>
+          <Field label="Formato" req>
+            <select value={res.fok} disabled={!res.ek}
+              onChange={(e) => setRes((p) => ({ ...p, fok: e.target.value }))}>
+              <option value="">Seleccione…</option>
+              {opFo.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div className="codres">
+          <span>Código de residuo</span>
+          <b className={codRes ? '' : 'vacio'}>{codRes || '— — — — — —'}</b>
+        </div>
+
+        <Field label="Otro nombre" nota="nombre comercial, opcional">
+          <input maxLength={40} value={res.otroNombre}
+            onChange={(e) => setRes((p) => ({ ...p, otroNombre: e.target.value }))}
+            placeholder="Como lo llama el cliente" />
         </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Unidad" required>
-            <Select value={comercial.unidad} onChange={(e) => setComercial((p) => ({ ...p, unidad: e.target.value }))}>
-              <option value="">Seleccione moneda/medida...</option>
+      </section>
+
+      {/* ══════════ 04 · COMERCIAL ══════════ */}
+      <section className="card">
+        <div className="card-head">
+          <span className="fmtNum">04</span>
+          <h2>Condición comercial</h2>
+        </div>
+        <p className="card-note">
+          <b>Venta</b>: el cliente paga por el servicio. <b>Compra/Pago</b>: Ambipar paga
+          por el material.
+        </p>
+
+        <div className="form-section">Negocio</div>
+        <Field label="Tipo de negocio" req>
+          <Chips options={LISTAS.TIPO_NEGOCIO} value={com.tipoNegocio}
+            onChange={(v) => setCom((p) => ({ ...p, tipoNegocio: v }))} />
+        </Field>
+        <div className="row2">
+          <Field label="Unidad" req>
+            <select value={com.unidad} onChange={(e) => setCom((p) => ({ ...p, unidad: e.target.value }))}>
+              <option value="">Moneda y medida…</option>
               {LISTAS.UNIDAD.map((u) => <option key={u} value={u}>{u}</option>)}
-            </Select>
+            </select>
           </Field>
-          <Field label="Valor" required>
-            <TextInput type="number" min="0" value={comercial.valor}
-              onChange={(e) => setComercial((p) => ({ ...p, valor: e.target.value }))} placeholder="Ingrese monto" />
+          <Field label="Valor" req>
+            <input type="number" min="0" step="any" value={com.valor}
+              onChange={(e) => setCom((p) => ({ ...p, valor: e.target.value }))} placeholder="0" />
+            {com.valor !== '' && com.unidad && !isNaN(Number(com.valor)) && (
+              <Hint>{fmtNum(Number(com.valor))} {com.unidad}</Hint>
+            )}
           </Field>
         </div>
-      </SectionCard>
+      </section>
 
-      <SectionCard color="#EDEDED" title="Apartado 5 · Adjuntos y comentarios">
-        <Field label="Referencia de archivo" hint='Nombre/enlace del documento (ej. repositorio SharePoint). Se renombrará como ID_Fecha_NombreFantasia.'>
-          <TextInput value={adjuntos.documentos} onChange={(e) => setAdjuntos((p) => ({ ...p, documentos: e.target.value }))} placeholder="Ej: cotizacion_polambiente.pdf" />
-        </Field>
-        <Field label="Comentarios" hint="Manual, libre (máx. 100 caracteres).">
-          <textarea maxLength={100} value={adjuntos.comentarios}
-            onChange={(e) => setAdjuntos((p) => ({ ...p, comentarios: e.target.value }))}
-            style={{ ...inputBase, minHeight: 60, resize: 'vertical' }} />
-        </Field>
-      </SectionCard>
+      {/* ══════════ 05 · RESPALDO ══════════ */}
+      <section className="card">
+        <div className="card-head">
+          <span className="fmtNum">05</span>
+          <h2>Respaldo y comentarios</h2>
+        </div>
 
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginBottom: 40 }}>
-        <button onClick={resetAfterSave} style={{
-          padding: '10px 18px', borderRadius: 7, border: `1px solid ${COLORS.border}`,
-          background: '#fff', color: COLORS.teal, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-        }}>Cancelar (Esc)</button>
-        <button onClick={handleSave} style={{
-          padding: '10px 22px', borderRadius: 7, border: 'none',
-          background: COLORS.lime, color: COLORS.teal, fontSize: 13, fontWeight: 800, cursor: 'pointer',
-        }} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar (Ctrl+Enter)'}</button>
+        <div className="form-section">Antecedentes</div>
+        <Field label="Referencia del documento" nota="nombre o enlace, opcional">
+          <input value={adj.documentos}
+            onChange={(e) => setAdj((p) => ({ ...p, documentos: e.target.value }))}
+            placeholder="Ej: cotizacion_cliente.pdf" />
+        </Field>
+        <Field label="Comentarios" nota="máx. 100 caracteres">
+          <textarea rows={2} maxLength={100} value={adj.comentarios}
+            onChange={(e) => setAdj((p) => ({ ...p, comentarios: e.target.value }))} />
+          <Hint>{adj.comentarios.length}/100</Hint>
+        </Field>
+      </section>
+
+      <div className="toolbar" style={{ justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button className="btn secondary" onClick={limpiarTodo} disabled={guardando}>
+          Limpiar todo
+        </button>
+        <button className="btn" onClick={handleSave} disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar cotización'}
+        </button>
       </div>
-    </div>
+    </>
   );
 }
 
-/* ============================== HISTORIAL ============================== */
+/* ══════════════════════════════════════════════════════════════════════════
+   7 · HISTORIAL
+   ══════════════════════════════════════════════════════════════════════════ */
 function HistorialPanel({ cotizaciones, onImport }) {
-  const [filtroMaterial, setFiltroMaterial] = useState('');
-  const [filtroZona, setFiltroZona] = useState('');
-  const fileInput = useRef(null);
+  const [fMaterial, setFMaterial] = useState('');
+  const [fRegion, setFRegion] = useState('');
+  const [fNegocio, setFNegocio] = useState('');
+  const archivo = useRef(null);
 
-  const materiales = useMemo(() => [...new Set(cotizaciones.map((c) => c.MATERIAL))].filter(Boolean).sort(), [cotizaciones]);
-  const zonas = useMemo(() => [...new Set(cotizaciones.map((c) => c.REGION_ESTABLECIMIENTO))].filter(Boolean).sort(), [cotizaciones]);
+  const materiales = useMemo(
+    () => [...new Set(cotizaciones.map((c) => c.MATERIAL).filter(Boolean))].sort(), [cotizaciones]);
+  const regiones = useMemo(
+    () => [...new Set(cotizaciones.map((c) => c.REGION_ESTABLECIMIENTO).filter(Boolean))].sort(), [cotizaciones]);
 
-  const filtradas = cotizaciones.filter((c) =>
-    (!filtroMaterial || c.MATERIAL === filtroMaterial) &&
-    (!filtroZona || c.REGION_ESTABLECIMIENTO === filtroZona)
-  ).sort((a, b) => (a.FECHA < b.FECHA ? 1 : -1));
+  const filtradas = useMemo(() => cotizaciones
+    .filter((c) => (!fMaterial || c.MATERIAL === fMaterial)
+      && (!fRegion || c.REGION_ESTABLECIMIENTO === fRegion)
+      && (!fNegocio || c.TIPO_NEGOCIO === fNegocio))
+    .sort((a, b) => String(b.FECHA || '').localeCompare(String(a.FECHA || ''))),
+    [cotizaciones, fMaterial, fRegion, fNegocio]);
 
-  const promedio = filtradas.length
-    ? filtradas.reduce((s, c) => s + (Number(c.VALOR) || 0), 0) / filtradas.length
-    : 0;
+  const valores = filtradas.map((c) => Number(c.VALOR)).filter((v) => !isNaN(v) && v !== 0);
+  const promedio = valores.length ? valores.reduce((s, v) => s + v, 0) / valores.length : 0;
+  const establecimientos = new Set(filtradas.map((c) => c.NOMBRE_FANTASIA)).size;
 
-  function handleFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
-      if (!wb.SheetNames.includes('COTIZACIONES')) {
-        alert('El archivo no contiene una hoja "COTIZACIONES".');
-        return;
+  function leerArchivo(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    const lector = new FileReader();
+    lector.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
+        if (!wb.SheetNames.includes('COTIZACIONES')) {
+          alert('El archivo no tiene una hoja llamada COTIZACIONES.');
+          return;
+        }
+        const filas = XLSX.utils.sheet_to_json(wb.Sheets['COTIZACIONES'], { defval: '' })
+          .filter((r) => r.ID)
+          .map((r) => ({ ...r, FECHA: r.FECHA instanceof Date
+            ? r.FECHA.toISOString().slice(0, 10) : String(r.FECHA || '') }));
+        onImport(filas);
+      } catch (err) {
+        alert('No se pudo leer el archivo: ' + err.message);
       }
-      const ws = wb.Sheets['COTIZACIONES'];
-      const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      const normalized = json.map((r) => ({
-        ...r,
-        FECHA: r.FECHA instanceof Date ? r.FECHA.toISOString().slice(0, 10) : String(r.FECHA),
-      }));
-      onImport(normalized);
     };
-    reader.readAsArrayBuffer(file);
+    lector.readAsArrayBuffer(f);
+    e.target.value = '';
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.teal, marginBottom: 4 }}>Material</div>
-          <Select value={filtroMaterial} onChange={(e) => setFiltroMaterial(e.target.value)} style={{ minWidth: 180 }}>
-            <option value="">Todos</option>
-            {materiales.map((m) => <option key={m} value={m}>{m}</option>)}
-          </Select>
-        </div>
-        <div>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.teal, marginBottom: 4 }}>Región</div>
-          <Select value={filtroZona} onChange={(e) => setFiltroZona(e.target.value)} style={{ minWidth: 180 }}>
-            <option value="">Todas</option>
-            {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
-          </Select>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div style={{ fontSize: 12, color: COLORS.gray }}>
-            <b style={{ color: COLORS.teal }}>{filtradas.length}</b> cotizaciones ·
-            valor promedio <b style={{ color: COLORS.teal }}>{fmtCLP(Math.round(promedio))}</b>
-          </div>
-          <button onClick={() => fileInput.current.click()} style={{
-            padding: '8px 14px', borderRadius: 7, border: `1px solid ${COLORS.teal}`,
-            background: '#fff', color: COLORS.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          }}>Importar histórico (.xlsx)</button>
-          <input ref={fileInput} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-        </div>
+    <>
+      <div className="page-head">
+        <span className="lime-rule" />
+        <h1 className="premium-heading">Historial de cotizaciones</h1>
+        <p className="bajada">
+          Las cotizaciones registradas en la base compartida. El histórico anterior
+          a esta herramienta vive en el Excel y se puede cargar aquí para consultarlo.
+        </p>
       </div>
 
-      <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-        <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead style={{ position: 'sticky', top: 0, background: COLORS.teal, color: '#fff' }}>
-              <tr>
-                {['Fecha', 'ID', 'Material', 'Tipo', 'Establecimiento', 'Región', 'Negocio', 'Valor', 'Unidad', 'Responsable'].map((h) => (
-                  <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtradas.slice(0, 300).map((c, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${COLORS.creamDark}`, background: i % 2 ? COLORS.cream : '#fff' }}>
-                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{c.FECHA}</td>
-                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{c.ID}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.MATERIAL}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.TIPO}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.NOMBRE_FANTASIA || c.NOMBRE_ESTABLECIMIENTO}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.REGION_ESTABLECIMIENTO}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.TIPO_NEGOCIO}</td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmtCLP(c.VALOR)}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.UNIDAD}</td>
-                  <td style={{ padding: '7px 10px' }}>{c.RESPONSABLE}</td>
-                </tr>
-              ))}
-              {filtradas.length === 0 && (
-                <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: COLORS.gray }}>
-                  Aún no hay cotizaciones registradas con estos filtros. Cargue el histórico o registre una cotización nueva.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+      <section className="card">
+        <div className="card-head">
+          <span className="fmtNum">01</span>
+          <h2>Consulta</h2>
+          <span className="tag">{filtradas.length} REGISTROS</span>
         </div>
-      </div>
-    </div>
+
+        <div className="toolbar">
+          <div className="field">
+            <label>Material</label>
+            <select value={fMaterial} onChange={(e) => setFMaterial(e.target.value)}>
+              <option value="">Todos</option>
+              {materiales.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Región</label>
+            <select value={fRegion} onChange={(e) => setFRegion(e.target.value)}>
+              <option value="">Todas</option>
+              {regiones.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Negocio</label>
+            <select value={fNegocio} onChange={(e) => setFNegocio(e.target.value)}>
+              <option value="">Ambos</option>
+              {LISTAS.TIPO_NEGOCIO.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="right">
+            <button className="btn secondary" onClick={() => archivo.current.click()}>
+              Cargar histórico (.xlsx)
+            </button>
+            <input ref={archivo} type="file" accept=".xlsx,.xls"
+              style={{ display: 'none' }} onChange={leerArchivo} />
+          </div>
+        </div>
+
+        <div className="kpis">
+          <div className="kpi"><b>{filtradas.length}</b><span>Cotizaciones</span></div>
+          <div className="kpi"><b>{establecimientos}</b><span>Establecimientos</span></div>
+          <div className="kpi"><b>{fmtNum(Math.round(promedio))}</b><span>Valor promedio</span></div>
+          <div className="kpi"><b>{materiales.length}</b><span>Materiales</span></div>
+        </div>
+
+        <div className="tabla-box">
+          <div className="tabla-scroll">
+            <table className="datos">
+              <thead>
+                <tr>
+                  {['Fecha', 'ID', 'Establecimiento', 'Región', 'Material', 'Tipo',
+                    'Negocio', 'Valor', 'Unidad', 'Responsable'].map((h) => <th key={h}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {filtradas.slice(0, 400).map((c, i) => (
+                  <tr key={c.ID || i}>
+                    <td>{c.FECHA}</td>
+                    <td className="destacado">{c.ID}</td>
+                    <td>{c.NOMBRE_FANTASIA || c.NOMBRE_ESTABLECIMIENTO}</td>
+                    <td>{c.REGION_ESTABLECIMIENTO}</td>
+                    <td>{c.MATERIAL}</td>
+                    <td>{c.TIPO}</td>
+                    <td>{c.TIPO_NEGOCIO}</td>
+                    <td className="num">{fmtNum(c.VALOR)}</td>
+                    <td>{c.UNIDAD}</td>
+                    <td>{c.RESPONSABLE}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtradas.length === 0 && (
+              <div className="empty-note" style={{ border: 0, margin: '1rem' }}>
+                {cotizaciones.length === 0
+                  ? 'Todavía no hay cotizaciones registradas. Use «Cargar histórico» para revisar las anteriores.'
+                  : 'Ningún registro coincide con estos filtros.'}
+              </div>
+            )}
+          </div>
+        </div>
+        {filtradas.length > 400 && (
+          <p className="card-note">Se muestran las 400 más recientes de {filtradas.length}.</p>
+        )}
+      </section>
+    </>
   );
 }
 
-/* ============================== APP ============================== */
+/* ══════════════════════════════════════════════════════════════════════════
+   8 · APLICACIÓN
+   ══════════════════════════════════════════════════════════════════════════ */
 export default function App() {
-  // sesion = { usuario, pin, nombre }. Se mantiene solo en memoria: al
-  // recargar la página hay que volver a ingresar el PIN.
+  /* La sesión vive solo en memoria: al recargar hay que ingresar el PIN. */
   const [sesion, setSesion] = useState(null);
-  const [view, setView] = useState('form');
+  const [vista, setVista] = useState('form');
   const [destinatarios, setDestinatarios] = useState([]);
   const [cotizaciones, setCotizaciones] = useState([]);
-  const [loaded, setLoaded] = useState(false);
+  const [cargado, setCargado] = useState(false);
   const [errorCarga, setErrorCarga] = useState('');
-  const [toast, setToast] = useState({ message: '', type: 'ok' });
+  const [toast, setToast] = useState({ txt: '', malo: false });
+  const toastTimer = useRef(null);
 
-  const user = sesion ? sesion.usuario : null;
+  const notify = useCallback((txt, malo) => {
+    setToast({ txt, malo: !!malo });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast({ txt: '', malo: false }), 4200);
+  }, []);
 
-  // Al iniciar sesión, trae destinatarios y cotizaciones desde el Sheet.
   useEffect(() => {
     if (!sesion) return;
     let cancelado = false;
     (async () => {
-      setLoaded(false);
-      setErrorCarga('');
+      setCargado(false); setErrorCarga('');
       try {
         const [dest, cots] = await Promise.all([
           api.getDestinatarios(sesion),
@@ -821,109 +916,100 @@ export default function App() {
       } catch (err) {
         if (cancelado) return;
         setErrorCarga(err.message);
-        // Si el Sheet no responde, se usa el catálogo local como respaldo
-        // para que al menos se pueda consultar, aunque no guardar.
+        /* Respaldo local: permite consultar aunque no se pueda guardar. */
         setDestinatarios(DESTINATARIOS_SEED.rows.map((r) => ({
-          NOMBRE_FANTASIA: r[0],
-          SISTEMA_DECLARACION: r[1],
-          CODIGO_ESTABLECIMIENTO: r[2],
-          RAZON_SOCIAL: r[3],
-          RUT: r[4],
-          NOMBRE_ESTABLECIMIENTO: r[5],
-          COMUNA_ESTABLECIMIENTO: r[6],
-          REGION_ESTABLECIMIENTO: r[7],
+          NOMBRE_FANTASIA: r[0], SISTEMA_DECLARACION: r[1], CODIGO_ESTABLECIMIENTO: r[2],
+          RAZON_SOCIAL: r[3], RUT: r[4], NOMBRE_ESTABLECIMIENTO: r[5],
+          COMUNA_ESTABLECIMIENTO: r[6], REGION_ESTABLECIMIENTO: r[7],
         })));
       } finally {
-        if (!cancelado) setLoaded(true);
+        if (!cancelado) setCargado(true);
       }
     })();
     return () => { cancelado = true; };
   }, [sesion]);
 
-  function notify(message, type) {
-    setToast({ message, type });
-    setTimeout(() => setToast({ message: '', type: 'ok' }), 4000);
+  async function handleAddDestinatario(fila) {
+    const yaEstaba = await api.agregarDestinatario(sesion, fila);
+    if (!yaEstaba) setDestinatarios((p) => [...p, fila]);
   }
 
-  async function handleAddDestinatario(newRow) {
-    const yaExistia = await api.agregarDestinatario(sesion, newRow);
-    if (!yaExistia) {
-      setDestinatarios((prev) => [...prev, newRow]);
-    }
-  }
-
-  async function handleSaveQuote(record) {
-    // El ID, la FECHA y el RESPONSABLE los asigna el servidor, para que el
-    // correlativo no se rompa si dos personas guardan a la vez.
-    const id = await api.guardarCotizacion(sesion, record);
-    setCotizaciones((prev) => [...prev, { ...record, ID: id }]);
+  async function handleSaveQuote(registro) {
+    /* El ID, la fecha y el responsable los pone el servidor, para que el
+       correlativo no se rompa si dos personas guardan a la vez. */
+    const id = await api.guardarCotizacion(sesion, registro);
+    setCotizaciones((p) => [...p, { ...registro, ID: id, FECHA: todayISO(),
+      RESPONSABLE: sesion.usuario }]);
     return id;
   }
 
-  async function handleImportCotizaciones(rows) {
-    // La importación solo alimenta la vista de historial; no escribe en el
-    // Sheet, porque el histórico vive en el Excel.
-    setCotizaciones((prev) => [...prev, ...rows]);
-    notify(`${rows.length} cotizaciones cargadas en la vista de historial.`, 'ok');
-    setView('historial');
+  function handleImport(filas) {
+    /* Solo alimenta la vista: el histórico sigue viviendo en el Excel. */
+    setCotizaciones((p) => {
+      const ids = new Set(p.map((c) => c.ID));
+      const nuevas = filas.filter((f) => !ids.has(f.ID));
+      notify(`${nuevas.length} cotizaciones cargadas para consulta.`);
+      return [...p, ...nuevas];
+    });
   }
 
-  if (!sesion) {
-    return <LoginScreen onLogin={setSesion} />;
-  }
+  if (!sesion) return <LoginScreen onLogin={setSesion} />;
 
   return (
-    <div style={{ minHeight: '100%', background: COLORS.cream, fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div style={{
-        background: COLORS.teal, color: '#fff', padding: '14px 22px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.lime }} />
-          <div style={{ fontWeight: 800, fontSize: 14.5 }}>Cotizaciones de Valorización</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={() => setView('form')} style={{
-            padding: '7px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-            background: view === 'form' ? COLORS.lime : 'transparent',
-            color: view === 'form' ? COLORS.teal : '#fff', fontWeight: 700, fontSize: 12.5,
-          }}>Nueva cotización</button>
-          <button onClick={() => setView('historial')} style={{
-            padding: '7px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-            background: view === 'historial' ? COLORS.lime : 'transparent',
-            color: view === 'historial' ? COLORS.teal : '#fff', fontWeight: 700, fontSize: 12.5,
-          }}>Historial</button>
-          <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.25)', margin: '0 4px' }} />
-          <div style={{ fontSize: 12, color: '#CFE0E0' }}>{user}</div>
-          <button onClick={() => setSesion(null)} style={{
-            padding: '6px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.3)',
-            background: 'transparent', color: '#fff', fontSize: 11.5, cursor: 'pointer',
-          }}>Salir</button>
-        </div>
-      </div>
+    <>
+      <MarcaDeAgua />
 
-      <div style={{ padding: '26px 20px' }}>
+      <header className="topbar">
+        <div className="topbar-in">
+          <LogoAmbipar />
+          <span className="divider" />
+          <div className="app-title">
+            <p className="premium-heading">Cotizaciones de Valorización</p>
+            <p>Ambipar Chile</p>
+          </div>
+          <div className="topbar-right">
+            <div className="navtabs">
+              <button aria-pressed={vista === 'form'} onClick={() => setVista('form')}>Nueva</button>
+              <button aria-pressed={vista === 'hist'} onClick={() => setVista('hist')}>Historial</button>
+            </div>
+            <div className="pill" title={errorCarga ? 'Sin conexión con la base' : 'Conectado a la base compartida'}>
+              <span className="dot" style={errorCarga ? { background: '#FF6B5A' } : undefined} />
+              <span>{errorCarga ? 'Sin conexión' : sesion.usuario}</span>
+            </div>
+            <button className="link-btn" onClick={() => setSesion(null)}>Salir</button>
+          </div>
+        </div>
+      </header>
+
+      <div className={'canvas' + (vista === 'hist' ? ' ancho' : '')}>
         {errorCarga && (
-          <div style={{
-            maxWidth: 720, margin: '0 auto 16px', padding: '12px 16px',
-            background: '#FDECEA', border: `1px solid ${COLORS.danger}`, borderRadius: 8,
-            fontSize: 12.5, color: '#7A2410', lineHeight: 1.5,
-          }}>
-            <b>No se pudo conectar con la base de datos.</b> Se está mostrando el catálogo
-            local, y lo que registre no se guardará. Detalle: {errorCarga}
+          <div className="aviso malo" style={{ marginBottom: '1.25rem' }}>
+            <b>No se pudo conectar con la base compartida.</b> Se está mostrando el
+            catálogo local: puede consultar, pero lo que registre no se guardará.
+            Detalle: {errorCarga}
           </div>
         )}
-        {!loaded ? (
-          <div style={{ textAlign: 'center', color: COLORS.gray, padding: 60 }}>Cargando datos...</div>
-        ) : view === 'form' ? (
-          <QuoteForm user={user} destinatarios={destinatarios} onSaveQuote={handleSaveQuote}
-            onAddDestinatario={handleAddDestinatario} notify={notify} />
+
+        {!cargado ? (
+          <div className="empty-note" style={{ marginTop: '3rem' }}>Cargando la base…</div>
+        ) : vista === 'form' ? (
+          <QuoteForm sesion={sesion} destinatarios={destinatarios}
+            onSaveQuote={handleSaveQuote} onAddDestinatario={handleAddDestinatario} notify={notify} />
         ) : (
-          <HistorialPanel cotizaciones={cotizaciones} onImport={handleImportCotizaciones} />
+          <HistorialPanel cotizaciones={cotizaciones} onImport={handleImport} />
         )}
       </div>
 
-      <Toast message={toast.message} type={toast.type} />
-    </div>
+      <footer className="footer">
+        <div className="footer-in">
+          <span>Ambipar Chile - Cotizaciones de Valorización</span>
+          <span>Inteligencia Circular LATAM</span>
+        </div>
+      </footer>
+
+      <div id="toast" className={(toast.txt ? 'on' : '') + (toast.malo ? ' malo' : '')}>
+        {toast.txt}
+      </div>
+    </>
   );
 }
