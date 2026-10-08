@@ -996,10 +996,12 @@ export default function App() {
     (async () => {
       setCargado(false); setErrorCarga('');
       try {
-        const [dest, cots] = await Promise.all([
-          api.getDestinatarios(sesion),
-          api.getCotizaciones(sesion),
-        ]);
+        /* Una petición después de la otra, no las dos a la vez: Apps Script
+           atiende de a una por usuario y al recibirlas juntas a veces
+           responde con una página de error en lugar de datos. */
+        const dest = await api.getDestinatarios(sesion);
+        if (cancelado) return;
+        const cots = await api.getCotizaciones(sesion);
         if (cancelado) return;
         setDestinatarios(dest);
         setCotizaciones(cots);
