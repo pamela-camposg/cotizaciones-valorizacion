@@ -211,6 +211,118 @@ function LoginScreen({ onLogin }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   5b · UNA LÍNEA DE RESIDUO (residuo + precio = un código de cotización)
+   ══════════════════════════════════════════════════════════════════════════ */
+function LineaResiduo({ linea: l, indice, total, onChange, onQuitar, onBuscar }) {
+  const T = RESIDUOS_TREE;
+  const opP = Object.keys(T);
+  const opF = l.pk ? Object.keys(T[l.pk]) : [];
+  const opM = l.fk ? Object.keys(T[l.pk][l.fk]) : [];
+  const opT = l.mk ? Object.keys(T[l.pk][l.fk][l.mk]) : [];
+  const opE = l.tk ? Object.keys(T[l.pk][l.fk][l.mk][l.tk]) : [];
+  const opFo = l.ek ? T[l.pk][l.fk][l.mk][l.tk][l.ek] : [];
+
+  const cod = codigoDe(l);
+  const lista = cod && l.unidad && l.valor !== '' && !isNaN(Number(l.valor));
+
+  return (
+    <div className={'linea' + (lista ? ' lista' : '')}>
+      <div className="linea-head">
+        <span className="linea-num">{indice + 1}</span>
+        <span className="linea-titulo">
+          {l.tk ? nameOf(l.tk) : 'Residuo sin definir'}
+        </span>
+        <button className="link-btn" onClick={onBuscar}>Buscar por tipo</button>
+        {total > 1 && (
+          <button className="linea-quitar" onClick={onQuitar} title="Quitar esta línea">×</button>
+        )}
+      </div>
+
+      <div className="row2">
+        <Field label="Peligrosidad" req>
+          <select value={l.pk}
+            onChange={(e) => onChange({ pk: e.target.value, fk: '', mk: '', tk: '', ek: '', fok: '' })}>
+            <option value="">Seleccione…</option>
+            {opP.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+          </select>
+        </Field>
+        <Field label="Familia" req>
+          <select value={l.fk} disabled={!l.pk}
+            onChange={(e) => onChange({ fk: e.target.value, mk: '', tk: '', ek: '', fok: '' })}>
+            <option value="">Seleccione…</option>
+            {opF.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+          </select>
+        </Field>
+      </div>
+      <div className="row2">
+        <Field label="Material" req>
+          <select value={l.mk} disabled={!l.fk}
+            onChange={(e) => onChange({ mk: e.target.value, tk: '', ek: '', fok: '' })}>
+            <option value="">Seleccione…</option>
+            {opM.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+          </select>
+        </Field>
+        <Field label="Tipo" req>
+          <select value={l.tk} disabled={!l.mk}
+            onChange={(e) => onChange({ tk: e.target.value, ek: '', fok: '' })}>
+            <option value="">Seleccione…</option>
+            {opT.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+          </select>
+        </Field>
+      </div>
+      <div className="row3">
+        <Field label="Estado" req>
+          <select value={l.ek} disabled={!l.tk}
+            onChange={(e) => onChange({ ek: e.target.value, fok: '' })}>
+            <option value="">Seleccione…</option>
+            {opE.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+          </select>
+        </Field>
+        <Field label="Formato" req>
+          <select value={l.fok} disabled={!l.ek}
+            onChange={(e) => onChange({ fok: e.target.value })}>
+            <option value="">Seleccione…</option>
+            {opFo.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
+          </select>
+        </Field>
+        <Field label="Otro nombre" nota="opcional">
+          <input maxLength={40} value={l.otroNombre}
+            onChange={(e) => onChange({ otroNombre: e.target.value })}
+            placeholder="Nombre comercial" />
+        </Field>
+      </div>
+
+      <div className="linea-precio">
+        <Field label="Negocio" req>
+          <Chips options={LISTAS.TIPO_NEGOCIO} value={l.tipoNegocio}
+            onChange={(v) => onChange({ tipoNegocio: v })} />
+        </Field>
+        <Field label="Unidad" req>
+          <select value={l.unidad} onChange={(e) => onChange({ unidad: e.target.value })}>
+            <option value="">Moneda y medida…</option>
+            {LISTAS.UNIDAD.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </Field>
+        <Field label="Valor" req>
+          <input type="number" min="0" step="any" value={l.valor}
+            onChange={(e) => onChange({ valor: e.target.value })} placeholder="0" />
+        </Field>
+      </div>
+
+      <div className="codres">
+        <span>Código de residuo</span>
+        <b className={cod ? '' : 'vacio'}>{cod || '— — — — — —'}</b>
+        {lista && (
+          <span className="codres-precio">
+            {l.tipoNegocio} · {fmtNum(Number(l.valor))} {l.unidad}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    6 · FORMULARIO DE COTIZACIÓN
    ══════════════════════════════════════════════════════════════════════════ */
 const VACIO_LOG = { tipoServicio: 'En planta', canalCotizacion: 'Correo', comunaOrigen: '', origen: '' };
@@ -218,19 +330,44 @@ const VACIO_EST = {
   nombreFantasia: '', comunaEstablecimiento: '', sistemaDeclaracion: '', codigoEstablecimiento: '',
   razonSocial: '', rut: '', nombreEstablecimiento: '', regionEstablecimiento: '', esNuevo: false,
 };
-const VACIO_RES = { pk: '', fk: '', mk: '', tk: '', ek: '', fok: '', otroNombre: '' };
-const VACIO_COM = { tipoNegocio: 'Venta', unidad: '', valor: '' };
 const VACIO_ADJ = { documentos: '', comentarios: '' };
 
-function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, notify }) {
+/* Una línea = un residuo con su precio. Cada línea genera su propio código
+   de cotización al guardar. */
+let contadorLineas = 0;
+function nuevaLinea() {
+  contadorLineas += 1;
+  return {
+    uid: 'L' + contadorLineas,
+    pk: '', fk: '', mk: '', tk: '', ek: '', fok: '', otroNombre: '',
+    tipoNegocio: 'Venta', unidad: '', valor: '',
+  };
+}
+
+/* El código de residuo de una línea, o '' si todavía está incompleta. */
+function codigoDe(l) {
+  if (!(l.pk && l.fk && l.mk && l.tk && l.ek && l.fok)) return '';
+  return [l.pk, l.fk, l.mk, l.tk, l.ek, l.fok].map((k) => splitKey(k).code).join('-');
+}
+
+function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, notify }) {
   const [log, setLog] = useState(VACIO_LOG);
   const [est, setEst] = useState(VACIO_EST);
-  const [res, setRes] = useState(VACIO_RES);
-  const [com, setCom] = useState(VACIO_COM);
+  const [lineas, setLineas] = useState([nuevaLinea()]);
   const [adj, setAdj] = useState(VACIO_ADJ);
-  const [buscando, setBuscando] = useState(false);
+  const [buscando, setBuscando] = useState(null);   // uid de la línea que busca
   const [guardando, setGuardando] = useState(false);
   const [query, setQuery] = useState('');
+
+  /* Cambia un campo de una línea. Al tocar un nivel de la cascada se limpian
+     los de abajo, porque dejan de ser válidos. */
+  function setLinea(uid, cambios) {
+    setLineas((prev) => prev.map((l) => (l.uid === uid ? { ...l, ...cambios } : l)));
+  }
+  function agregarLinea() { setLineas((prev) => [...prev, nuevaLinea()]); }
+  function quitarLinea(uid) {
+    setLineas((prev) => (prev.length === 1 ? [nuevaLinea()] : prev.filter((l) => l.uid !== uid)));
+  }
 
   /* ---------- establecimiento ---------- */
   const nombres = useMemo(
@@ -293,42 +430,46 @@ function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, noti
     }));
   }
 
-  /* ---------- cascada del residuo ---------- */
-  const T = RESIDUOS_TREE;
-  const opP = Object.keys(T);
-  const opF = res.pk ? Object.keys(T[res.pk]) : [];
-  const opM = res.fk ? Object.keys(T[res.pk][res.fk]) : [];
-  const opT = res.mk ? Object.keys(T[res.pk][res.fk][res.mk]) : [];
-  const opE = res.tk ? Object.keys(T[res.pk][res.fk][res.mk][res.tk]) : [];
-  const opFo = res.ek ? T[res.pk][res.fk][res.mk][res.tk][res.ek] : [];
-
-  const codRes = useMemo(() => {
-    const { pk, fk, mk, tk, ek, fok } = res;
-    if (!(pk && fk && mk && tk && ek && fok)) return '';
-    return [pk, fk, mk, tk, ek, fok].map((k) => splitKey(k).code).join('-');
-  }, [res]);
-
   /* ---------- guardar ---------- */
   function limpiarParcial() {
     /* Los apartados 1 y 2 quedan cargados: lo habitual es registrar varias
        cotizaciones seguidas del mismo establecimiento. */
-    setRes(VACIO_RES); setCom(VACIO_COM); setAdj(VACIO_ADJ);
+    setLineas([nuevaLinea()]); setAdj(VACIO_ADJ);
   }
   function limpiarTodo() {
     setLog(VACIO_LOG); setEst(VACIO_EST); setQuery('');
-    setRes(VACIO_RES); setCom(VACIO_COM); setAdj(VACIO_ADJ);
+    setLineas([nuevaLinea()]); setAdj(VACIO_ADJ);
   }
+
+  /* Líneas con residuo y precio completos: son las que se van a guardar. */
+  const completas = lineas.filter((l) => codigoDe(l) && l.unidad
+    && l.valor !== '' && !isNaN(Number(l.valor)));
 
   function validar() {
     if (!est.nombreFantasia) return 'Falta el establecimiento (Apartado 2).';
     if (est.esNuevo && (!est.razonSocial || !est.rut || !est.comunaEstablecimiento))
       return 'Del destinatario nuevo faltan razón social, RUT o comuna.';
     if (!est.esNuevo && !est.comunaEstablecimiento) return 'Falta la comuna del establecimiento.';
-    if (!codRes) return 'Falta completar la caracterización del residuo (Apartado 3).';
     if (log.tipoServicio === 'Con retiro' && !log.comunaOrigen)
       return 'Un servicio con retiro necesita la comuna de origen.';
-    if (!com.unidad) return 'Falta la unidad de la condición comercial (Apartado 4).';
-    if (com.valor === '' || isNaN(Number(com.valor))) return 'Falta el valor de la condición comercial.';
+    if (!completas.length) return 'Agregue al menos un residuo con su precio (Apartado 3).';
+
+    /* Una línea a medio llenar casi siempre es un olvido, no una línea de
+       descarte: mejor avisar que guardarla en silencio. */
+    const aMedias = lineas.findIndex((l) => {
+      const algo = l.pk || l.unidad || l.valor !== '' || l.otroNombre;
+      return algo && !completas.includes(l);
+    });
+    if (aMedias >= 0) {
+      return `La línea ${aMedias + 1} está incompleta: necesita el residuo completo, la unidad y el valor.`;
+    }
+
+    /* El mismo residuo dos veces en la misma cotización suele ser un
+       duplicado accidental. */
+    const codigos = completas.map(codigoDe);
+    const repetido = codigos.find((x, i) => codigos.indexOf(x) !== i);
+    if (repetido) return `El residuo ${repetido} está repetido. Déjelo una sola vez o cambie el formato.`;
+
     return null;
   }
 
@@ -349,7 +490,10 @@ function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, noti
           REGION_ESTABLECIMIENTO: REGION_BY_COMUNA[est.comunaEstablecimiento] || '',
         });
       }
-      const registro = {
+
+      /* La cabecera es igual para todas las líneas; lo que cambia es el
+         residuo y su precio. */
+      const cabecera = {
         TIPO_SERVICIO: log.tipoServicio,
         CANAL_COTIZACION: log.canalCotizacion,
         ORIGEN: log.origen,
@@ -364,22 +508,29 @@ function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, noti
         RAZON_SOCIAL: est.razonSocial,
         RUT: est.rut,
         NOMBRE_ESTABLECIMIENTO: est.nombreEstablecimiento,
-        COD_RES: codRes,
-        PELIGROSIDAD: nameOf(res.pk),
-        FAMILIA: nameOf(res.fk),
-        MATERIAL: nameOf(res.mk),
-        TIPO: nameOf(res.tk),
-        ESTADO: nameOf(res.ek),
-        FORMATO: nameOf(res.fok),
-        OTRO_NOMBRE: res.otroNombre,
-        TIPO_NEGOCIO: com.tipoNegocio,
-        VALOR: Number(com.valor),
-        UNIDAD: com.unidad,
         DOCUMENTOS: adj.documentos,
         COMENTARIOS: adj.comentarios,
       };
-      const id = await onSaveQuote(registro);
-      notify(`Cotización ${id} guardada en la base compartida.`);
+
+      const registros = completas.map((l) => ({
+        ...cabecera,
+        COD_RES: codigoDe(l),
+        PELIGROSIDAD: nameOf(l.pk),
+        FAMILIA: nameOf(l.fk),
+        MATERIAL: nameOf(l.mk),
+        TIPO: nameOf(l.tk),
+        ESTADO: nameOf(l.ek),
+        FORMATO: nameOf(l.fok),
+        OTRO_NOMBRE: l.otroNombre,
+        TIPO_NEGOCIO: l.tipoNegocio,
+        VALOR: Number(l.valor),
+        UNIDAD: l.unidad,
+      }));
+
+      const ids = await onSaveQuotes(registros);
+      notify(ids.length === 1
+        ? `Cotización ${ids[0]} guardada.`
+        : `${ids.length} cotizaciones guardadas: ${ids[0]} a ${ids[ids.length - 1]}.`);
       limpiarParcial();
     } catch (e) {
       /* No se limpia nada: así no se pierde lo escrito y se puede reintentar. */
@@ -387,34 +538,43 @@ function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, noti
     } finally {
       setGuardando(false);
     }
-  }, [log, est, res, com, adj, codRes, onSaveQuote, onAddDestinatario, notify]);
+  }, [log, est, lineas, adj, completas, onSaveQuotes, onAddDestinatario, notify]);
 
   /* ---------- atajos ---------- */
   useEffect(() => {
     const h = (e) => {
-      if (e.key === 'F2') { e.preventDefault(); setBuscando(true); }
-      if (e.key === 'Escape') setBuscando(false);
+      if (e.key === 'F2') {
+        e.preventDefault();
+        /* Busca para la primera línea sin residuo, o para la última. */
+        const vacia = lineas.find((l) => !l.pk);
+        setBuscando((vacia || lineas[lineas.length - 1]).uid);
+      }
+      if (e.key === 'Escape') setBuscando(null);
       if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave(); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [handleSave]);
+  }, [handleSave, lineas]);
 
   const conRetiro = log.tipoServicio === 'Con retiro';
 
   return (
     <>
       {buscando && (
-        <BuscadorResiduo onClose={() => setBuscando(false)}
-          onSelect={(r) => { setRes({ ...VACIO_RES, ...r }); setBuscando(false); }} />
+        <BuscadorResiduo onClose={() => setBuscando(null)}
+          onSelect={(r) => {
+            setLinea(buscando, { ...r, ek: '', fok: '' });
+            setBuscando(null);
+          }} />
       )}
 
       <div className="page-head">
         <span className="lime-rule" />
         <h1 className="premium-heading">Nueva cotización</h1>
         <p className="bajada">
-          Los campos marcados con <b>*</b> son obligatorios. El código de residuo, el ID
-          y la fecha se generan solos. <b>F2</b> busca un residuo por su tipo;
+          Los campos marcados con <b>*</b> son obligatorios. Una misma cotización
+          puede incluir varios residuos: cada uno con su precio, y cada uno genera
+          su propio código. <b>F2</b> busca un residuo por su tipo;
           <b> Ctrl+Enter</b> guarda.
         </p>
       </div>
@@ -592,111 +752,38 @@ function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, noti
         )}
       </section>
 
-      {/* ══════════ 03 · RESIDUO ══════════ */}
+      {/* ══════════ 03 · RESIDUOS Y PRECIOS ══════════ */}
       <section className="card">
         <div className="card-head">
           <span className="fmtNum">03</span>
-          <h2>Caracterización del residuo</h2>
-          <button className="link-btn" style={{ marginLeft: 'auto' }}
-            onClick={() => setBuscando(true)}>F2 · Buscar por tipo</button>
+          <h2>Residuos y precios</h2>
+          <span className="tag">
+            {completas.length === 0 ? 'SIN LÍNEAS COMPLETAS'
+              : completas.length === 1 ? '1 CÓDIGO' : completas.length + ' CÓDIGOS'}
+          </span>
         </div>
         <p className="card-note">
-          Cada nivel filtra al siguiente. El código se arma con los seis segmentos.
+          Agregue un residuo por cada material cotizado, con su precio.
+          <b> Cada línea genera su propio código de cotización</b>, de modo que
+          después se pueda consultar el precio de cada material por separado.
         </p>
 
-        <div className="form-section">Clasificación</div>
-        <div className="row2">
-          <Field label="Peligrosidad" req>
-            <select value={res.pk} onChange={(e) => setRes({ ...VACIO_RES, pk: e.target.value })}>
-              <option value="">Seleccione…</option>
-              {opP.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
-            </select>
-          </Field>
-          <Field label="Familia" req>
-            <select value={res.fk} disabled={!res.pk}
-              onChange={(e) => setRes((p) => ({ ...VACIO_RES, pk: p.pk, fk: e.target.value }))}>
-              <option value="">Seleccione…</option>
-              {opF.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
-            </select>
-          </Field>
-        </div>
-        <div className="row2">
-          <Field label="Material" req>
-            <select value={res.mk} disabled={!res.fk}
-              onChange={(e) => setRes((p) => ({ ...p, mk: e.target.value, tk: '', ek: '', fok: '' }))}>
-              <option value="">Seleccione…</option>
-              {opM.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
-            </select>
-          </Field>
-          <Field label="Tipo" req>
-            <select value={res.tk} disabled={!res.mk}
-              onChange={(e) => setRes((p) => ({ ...p, tk: e.target.value, ek: '', fok: '' }))}>
-              <option value="">Seleccione…</option>
-              {opT.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
-            </select>
-          </Field>
-        </div>
+        {lineas.map((l, i) => (
+          <LineaResiduo key={l.uid} linea={l} indice={i} total={lineas.length}
+            onChange={(cambios) => setLinea(l.uid, cambios)}
+            onQuitar={() => quitarLinea(l.uid)}
+            onBuscar={() => setBuscando(l.uid)} />
+        ))}
 
-        <div className="form-section">Cómo viene</div>
-        <div className="row2">
-          <Field label="Estado" req>
-            <select value={res.ek} disabled={!res.tk}
-              onChange={(e) => setRes((p) => ({ ...p, ek: e.target.value, fok: '' }))}>
-              <option value="">Seleccione…</option>
-              {opE.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
-            </select>
-          </Field>
-          <Field label="Formato" req>
-            <select value={res.fok} disabled={!res.ek}
-              onChange={(e) => setRes((p) => ({ ...p, fok: e.target.value }))}>
-              <option value="">Seleccione…</option>
-              {opFo.map((k) => <option key={k} value={k}>{nameOf(k)}</option>)}
-            </select>
-          </Field>
-        </div>
-
-        <div className="codres">
-          <span>Código de residuo</span>
-          <b className={codRes ? '' : 'vacio'}>{codRes || '— — — — — —'}</b>
-        </div>
-
-        <Field label="Otro nombre" nota="nombre comercial, opcional">
-          <input maxLength={40} value={res.otroNombre}
-            onChange={(e) => setRes((p) => ({ ...p, otroNombre: e.target.value }))}
-            placeholder="Como lo llama el cliente" />
-        </Field>
-      </section>
-
-      {/* ══════════ 04 · COMERCIAL ══════════ */}
-      <section className="card">
-        <div className="card-head">
-          <span className="fmtNum">04</span>
-          <h2>Condición comercial</h2>
-        </div>
-        <p className="card-note">
-          <b>Venta</b>: el cliente paga por el servicio. <b>Compra/Pago</b>: Ambipar paga
-          por el material.
-        </p>
-
-        <div className="form-section">Negocio</div>
-        <Field label="Tipo de negocio" req>
-          <Chips options={LISTAS.TIPO_NEGOCIO} value={com.tipoNegocio}
-            onChange={(v) => setCom((p) => ({ ...p, tipoNegocio: v }))} />
-        </Field>
-        <div className="row2">
-          <Field label="Unidad" req>
-            <select value={com.unidad} onChange={(e) => setCom((p) => ({ ...p, unidad: e.target.value }))}>
-              <option value="">Moneda y medida…</option>
-              {LISTAS.UNIDAD.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </Field>
-          <Field label="Valor" req>
-            <input type="number" min="0" step="any" value={com.valor}
-              onChange={(e) => setCom((p) => ({ ...p, valor: e.target.value }))} placeholder="0" />
-            {com.valor !== '' && com.unidad && !isNaN(Number(com.valor)) && (
-              <Hint>{fmtNum(Number(com.valor))} {com.unidad}</Hint>
-            )}
-          </Field>
+        <div className="linea-acciones">
+          <button className="btn secondary" onClick={agregarLinea}>
+            + Agregar otro residuo
+          </button>
+          {completas.length > 1 && (
+            <span className="linea-resumen">
+              Se van a generar <b>{completas.length}</b> cotizaciones, una por residuo.
+            </span>
+          )}
         </div>
       </section>
 
@@ -720,12 +807,14 @@ function QuoteForm({ sesion, destinatarios, onSaveQuote, onAddDestinatario, noti
         </Field>
       </section>
 
-      <div className="toolbar" style={{ justifyContent: 'flex-end', marginBottom: '1rem' }}>
+      <div className="guardar-barra">
         <button className="btn secondary" onClick={limpiarTodo} disabled={guardando}>
           Limpiar todo
         </button>
         <button className="btn" onClick={handleSave} disabled={guardando}>
-          {guardando ? 'Guardando…' : 'Guardar cotización'}
+          {guardando ? 'Guardando…'
+            : completas.length > 1 ? `Guardar ${completas.length} cotizaciones`
+            : 'Guardar cotización'}
         </button>
       </div>
     </>
@@ -849,16 +938,17 @@ function HistorialPanel({ cotizaciones, onImport }) {
               <tbody>
                 {filtradas.slice(0, 400).map((c, i) => (
                   <tr key={c.ID || i}>
-                    <td>{c.FECHA}</td>
-                    <td className="destacado">{c.ID}</td>
-                    <td>{c.NOMBRE_FANTASIA || c.NOMBRE_ESTABLECIMIENTO}</td>
-                    <td>{c.REGION_ESTABLECIMIENTO}</td>
-                    <td>{c.MATERIAL}</td>
-                    <td>{c.TIPO}</td>
-                    <td>{c.TIPO_NEGOCIO}</td>
-                    <td className="num">{fmtNum(c.VALOR)}</td>
-                    <td>{c.UNIDAD}</td>
-                    <td>{c.RESPONSABLE}</td>
+                    {/* data-label alimenta la vista apilada en celular */}
+                    <td data-label="Fecha">{c.FECHA}</td>
+                    <td data-label="ID" className="destacado">{c.ID}</td>
+                    <td data-label="Establecimiento">{c.NOMBRE_FANTASIA || c.NOMBRE_ESTABLECIMIENTO}</td>
+                    <td data-label="Región">{c.REGION_ESTABLECIMIENTO}</td>
+                    <td data-label="Material">{c.MATERIAL}</td>
+                    <td data-label="Tipo">{c.TIPO}</td>
+                    <td data-label="Negocio">{c.TIPO_NEGOCIO}</td>
+                    <td data-label="Valor" className="num">{fmtNum(c.VALOR)}</td>
+                    <td data-label="Unidad">{c.UNIDAD}</td>
+                    <td data-label="Responsable">{c.RESPONSABLE}</td>
                   </tr>
                 ))}
               </tbody>
@@ -934,13 +1024,15 @@ export default function App() {
     if (!yaEstaba) setDestinatarios((p) => [...p, fila]);
   }
 
-  async function handleSaveQuote(registro) {
-    /* El ID, la fecha y el responsable los pone el servidor, para que el
-       correlativo no se rompa si dos personas guardan a la vez. */
-    const id = await api.guardarCotizacion(sesion, registro);
-    setCotizaciones((p) => [...p, { ...registro, ID: id, FECHA: todayISO(),
-      RESPONSABLE: sesion.usuario }]);
-    return id;
+  async function handleSaveQuotes(registros) {
+    /* Los ID, la fecha y el responsable los pone el servidor: así el
+       correlativo no se rompe si dos personas guardan a la vez, y las líneas
+       de una misma cotización quedan con códigos consecutivos. */
+    const ids = await api.guardarCotizaciones(sesion, registros);
+    setCotizaciones((p) => [...p, ...registros.map((r, i) => ({
+      ...r, ID: ids[i], FECHA: todayISO(), RESPONSABLE: sesion.usuario,
+    }))]);
+    return ids;
   }
 
   function handleImport(filas) {
@@ -994,7 +1086,7 @@ export default function App() {
           <div className="empty-note" style={{ marginTop: '3rem' }}>Cargando la base…</div>
         ) : vista === 'form' ? (
           <QuoteForm sesion={sesion} destinatarios={destinatarios}
-            onSaveQuote={handleSaveQuote} onAddDestinatario={handleAddDestinatario} notify={notify} />
+            onSaveQuotes={handleSaveQuotes} onAddDestinatario={handleAddDestinatario} notify={notify} />
         ) : (
           <HistorialPanel cotizaciones={cotizaciones} onImport={handleImport} />
         )}
