@@ -220,6 +220,45 @@ footer.footer{ border-top:1px solid var(--z200); background:#fff }
   justify-content:space-between; gap:.75rem; padding:1.5rem; font-size:12px; color:var(--z400) }
 
 /* ---------- CELULAR ---------- */
+/* ---------- LÍNEAS DE RESIDUO ---------- */
+/* Cada línea es un residuo con su precio, y genera su propio código. */
+.linea{ border:1px solid var(--z200); border-left:3px solid var(--z300);
+  background:var(--z50); padding:.9rem 1rem .5rem; margin-bottom:.9rem; transition:.2s }
+.linea.lista{ border-left-color:var(--neon); background:#fff }
+.linea-head{ display:flex; align-items:center; gap:.6rem; margin-bottom:.9rem;
+  padding-bottom:.5rem; border-bottom:1px solid var(--z200) }
+.linea-num{ display:inline-flex; height:1.25rem; width:1.5rem; align-items:center;
+  justify-content:center; border-radius:3px; background:var(--z200); font-size:10px;
+  font-weight:600; color:var(--z600); flex:0 0 auto }
+.linea.lista .linea-num{ background:var(--neon); color:var(--tinta) }
+.linea-titulo{ font-size:13px; font-weight:500; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap }
+.linea:not(.lista) .linea-titulo{ color:var(--z400) }
+.linea-head .link-btn{ margin-left:auto; flex:0 0 auto }
+.linea-quitar{ border:1px solid var(--z200); background:#fff; color:var(--z400);
+  width:24px; height:24px; font-size:15px; line-height:1; padding:0; flex:0 0 auto;
+  border-radius:4px; transition:.15s }
+.linea-quitar:hover{ border-color:var(--rojo); background:var(--rojoBg); color:var(--rojo) }
+
+/* El precio va en su propia banda, para que se lea aparte del residuo. */
+.linea-precio{ display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr);
+  gap:.7rem; align-items:start; padding-top:.3rem; border-top:1px dashed var(--z200); margin-top:.2rem }
+
+.codres-precio{ margin-left:auto; font-size:11.5px; font-weight:600; color:var(--z600);
+  font-variant-numeric:tabular-nums }
+
+.linea-acciones{ display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; margin-top:.2rem }
+.linea-resumen{ font-size:12.5px; color:var(--z500) }
+.linea-resumen b{ color:var(--tinta); font-weight:600 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CELULAR Y TABLET
+   El formulario se llena de pie en planta o en la calle, así que manda el
+   pulgar: campos altos, nada de zoom al tocar, y el botón de guardar
+   siempre a la vista.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ---------- Tablet y pantallas angostas ---------- */
 @media (max-width:900px){
   body{ font-size:14px }
   .canvas{ padding:1.25rem 1rem 2rem }
@@ -241,6 +280,126 @@ footer.footer{ border-top:1px solid var(--z200); background:#fff }
   .overlay{ padding:0; padding-top:0 }
   .modal{ border-radius:0; max-height:100vh; height:100%; width:100% }
   .watermark{ display:none }
+  .linea-precio{ grid-template-columns:1fr }
+  .linea{ padding:.8rem .7rem .4rem }
+}
+
+/* ---------- Celular ---------- */
+@media (max-width:640px){
+
+  /* Los 16px NO son estética: bajo eso, Safari en iPhone hace zoom solo al
+     tocar un campo y deja la página descuadrada. */
+  .field input,.field select,.field textarea{
+    font-size:16px; padding:.7rem .75rem; min-height:46px;
+  }
+  .field textarea{ min-height:84px }
+  .field label{ font-size:10.5px; margin-bottom:.35rem }
+
+  /* Todo lo que se toca, del tamaño de un dedo. */
+  .btn{ min-height:46px; padding:.7rem 1.1rem; font-size:14px }
+  .chip{ min-height:42px; padding:.55rem 1rem; font-size:14px; flex:1 1 auto; text-align:center }
+  .chips{ gap:.5rem }
+  .link-btn{ min-height:44px; display:inline-flex; align-items:center; font-size:11.5px }
+  .navtabs button{ min-height:40px; padding:.5rem 1.1rem; font-size:13px; flex:1 }
+  .navtabs{ flex:1 }
+
+  /* Barra superior compacta: en pantalla chica el alto es lo escaso. */
+  header.topbar{ position:static }
+  .topbar-in{ padding:.6rem .85rem; gap:.5rem }
+  .topbar-in .logo{ height:1.35rem }
+  .app-title p:last-child{ display:none }
+  .topbar-right{ gap:.5rem }
+  .canvas{ padding:1.1rem .85rem 1.5rem }
+
+  h1.premium-heading{ font-size:1.4rem; line-height:1.8rem }
+  .bajada{ font-size:13px }
+  .card{ padding:.9rem .75rem 1rem }
+  .card-head{ gap:.5rem }
+  .form-section{ margin:1rem 0 .7rem }
+
+  /* Líneas de residuo: el número y el botón de quitar, bien separados. */
+  .linea{ padding:.75rem .65rem .5rem }
+  .linea-head{ gap:.5rem }
+  .linea-quitar{ width:38px; height:38px; font-size:19px }
+  .linea-titulo{ font-size:13.5px }
+  .codres{ flex-wrap:wrap; gap:.35rem; padding:.6rem .7rem }
+  .codres b{ font-size:14px; width:100%; order:2 }
+  .codres-precio{ margin-left:0; order:3; width:100% }
+  .linea-acciones{ flex-direction:column; align-items:stretch }
+  .linea-acciones .btn{ width:100% }
+  .linea-resumen{ text-align:center }
+
+  /* Guardar siempre a mano: el formulario es largo y nadie quiere volver
+     al final para enviarlo. */
+  .guardar-barra{
+    position:sticky; bottom:0; z-index:50;
+    display:flex; gap:.5rem; margin:0 -.85rem;
+    padding:.7rem .85rem calc(.7rem + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.96); backdrop-filter:blur(8px);
+    border-top:1px solid var(--z200);
+  }
+  .guardar-barra .btn{ flex:1 }
+  .guardar-barra .btn.secondary{ flex:0 0 auto; padding:.7rem .9rem }
+
+  /* El historial deja de ser tabla: cada cotización es una ficha, porque
+     diez columnas en un celular obligan a un vaivén imposible. */
+  .tabla-box{ border:0; background:none }
+  .tabla-scroll{ max-height:none; overflow:visible }
+  table.datos{ min-width:0; display:block }
+  table.datos thead{ display:none }
+  table.datos tbody{ display:block }
+  table.datos tbody tr{
+    display:block; background:#fff!important; border:1px solid var(--z200);
+    border-left:3px solid var(--neon); margin-bottom:.6rem; padding:.3rem .75rem .5rem;
+  }
+  table.datos td{
+    display:flex; justify-content:space-between; align-items:baseline; gap:1rem;
+    padding:.3rem 0; border-top:0; border-bottom:1px solid var(--z100);
+    white-space:normal; text-align:right; font-size:13px;
+  }
+  table.datos tbody tr td:last-child{ border-bottom:0 }
+  table.datos td::before{
+    content:attr(data-label); flex:0 0 auto; text-align:left;
+    font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--z400); font-weight:500;
+  }
+  table.datos td.num{ text-align:right }
+  table.datos td.destacado{ font-size:14px }
+  /* Una celda vacía no aporta nada y alarga la ficha. */
+  table.datos td:empty{ display:none }
+
+  .kpis{ grid-template-columns:repeat(2,1fr); gap:.45rem }
+  .kpi b{ font-size:17px }
+  .toolbar{ gap:.5rem }
+  .toolbar .field{ flex:1 1 100% }
+
+  /* Buscador a pantalla completa. */
+  .modal-head{ padding:.9rem 1rem }
+  .modal-body .op{ padding:.8rem 1rem }
+  .modal-body .op b{ font-size:14px }
+
+  /* Acceso */
+  .login-card{ padding:1.6rem 1.25rem; border-radius:6px }
+  .login-card h1{ font-size:1.3rem; line-height:1.7rem }
+  .login-wrap{ padding:1rem; align-items:flex-start; padding-top:2rem }
+
+  #toast{ left:.75rem; right:.75rem; bottom:.75rem; max-width:none; text-align:center }
+  .footer-in{ padding:1.1rem .85rem; font-size:11px; justify-content:center; text-align:center }
+}
+
+/* Pantallas muy angostas (iPhone SE y similares) */
+@media (max-width:360px){
+  .canvas{ padding:1rem .7rem 1.5rem }
+  .guardar-barra{ margin:0 -.7rem; padding-left:.7rem; padding-right:.7rem }
+  .chip{ flex:1 1 100% }
+  .kpis{ grid-template-columns:1fr }
+}
+
+/* En horizontal el alto es poco: no fijamos la barra para no comerlo. */
+@media (max-height:520px) and (orientation:landscape){
+  .guardar-barra{ position:static; background:none; backdrop-filter:none;
+    border-top:0; margin:0; padding:.5rem 0 }
+  header.topbar{ position:static }
 }
 
 @media print{
