@@ -603,8 +603,9 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
         <div className="form-section">Origen del residuo</div>
         {!conRetiro && (
           <div className="aviso">
-            En un servicio <b>en planta</b> el cliente lleva el residuo, así que no
-            corresponde indicar origen. Cambie a <b>Con retiro</b> si hay que ir a buscarlo.
+            En un servicio <b>En planta</b>, el valor cotizado corresponde al valor del
+            servicio con el material entregado en la planta del destinatario.
+            Seleccione <b>Con retiro</b> si el destinatario retira el material en el origen.
           </div>
         )}
         {conRetiro && (
