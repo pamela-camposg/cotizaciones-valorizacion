@@ -17,14 +17,17 @@ export const API_URL =
   'https://script.google.com/macros/s/AKfycbxBJlzINKoiB41pSn44KIU6cmxvBp60THPIrXNpV1dtsZ9BkgeeQoebU6ZBwdPVZx0_-g/exec';
 
 /** Llamada genérica a la API. Devuelve los datos o lanza un error con el mensaje del servidor. */
-async function llamar(accion, credenciales, extra) {
-  const cuerpo = {
-    accion,
-    usuario: credenciales ? credenciales.usuario : undefined,
-    pin: credenciales ? credenciales.pin : undefined,
-    ...(extra || {}),
-  };
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Un intento. Devuelve { datos } si el servidor contestó JSON, o
+ * { reintentable:true } si contestó otra cosa.
+ *
+ * Google a veces responde con una página HTML en vez de datos cuando el
+ * script está ocupado. Eso se pasa solo, así que conviene reintentar en vez
+ * de darle un error al usuario.
+ */
+async function intentar(cuerpo) {
   let respuesta;
   try {
     respuesta = await fetch(API_URL, {
@@ -34,19 +37,49 @@ async function llamar(accion, credenciales, extra) {
       redirect: 'follow',
     });
   } catch (e) {
+    return { reintentable: true, motivo: 'sin-conexion' };
+  }
+
+  const texto = await respuesta.text();
+  try {
+    return { datos: JSON.parse(texto) };
+  } catch (e) {
+    return { reintentable: true, motivo: 'no-json', texto };
+  }
+}
+
+async function llamar(accion, credenciales, extra) {
+  const cuerpo = {
+    accion,
+    usuario: credenciales ? credenciales.usuario : undefined,
+    pin: credenciales ? credenciales.pin : undefined,
+    ...(extra || {}),
+  };
+
+  // Tres intentos, esperando cada vez un poco más.
+  let ultimo = null;
+  for (let i = 0; i < 3; i++) {
+    if (i > 0) await esperar(i * 1200);
+    ultimo = await intentar(cuerpo);
+    if (ultimo.datos) break;
+  }
+
+  if (!ultimo.datos) {
+    if (ultimo.motivo === 'sin-conexion') {
+      throw new Error(
+        'No se pudo contactar el servidor. Revise su conexión a internet, ' +
+        'o que la implementación del Apps Script tenga acceso "Cualquier usuario".'
+      );
+    }
+    // Deja rastro en la consola del navegador para poder diagnosticar.
+    console.error('Respuesta no reconocida del servidor:', (ultimo.texto || '').slice(0, 400));
     throw new Error(
-      'No se pudo contactar el servidor. Revise su conexión a internet, ' +
-      'o que la implementación del Apps Script tenga acceso "Cualquier usuario".'
+      'El servidor respondió en un formato inesperado después de 3 intentos. ' +
+      'Suele ser pasajero: vuelva a cargar la página en unos segundos.'
     );
   }
 
-  let datos;
-  try {
-    datos = await respuesta.json();
-  } catch (e) {
-    throw new Error('El servidor respondió en un formato inesperado.');
-  }
-
+  const datos = ultimo.datos;
   if (!datos.ok) throw new Error(datos.error || 'Error desconocido del servidor.');
   return datos;
 }
