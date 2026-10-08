@@ -75,6 +75,16 @@ export async function guardarCotizacion(credenciales, cotizacion) {
   return r.id;
 }
 
+/**
+ * Guarda varias líneas de residuo de una misma cotización. Cada línea recibe
+ * su propio código, y los códigos quedan consecutivos.
+ * Devuelve el arreglo de códigos asignados, en el mismo orden.
+ */
+export async function guardarCotizaciones(credenciales, cotizaciones) {
+  const r = await llamar('guardarCotizaciones', credenciales, { cotizaciones });
+  return r.ids || [];
+}
+
 /** Agrega un destinatario nuevo. Devuelve true si ya existía (no se duplicó). */
 export async function agregarDestinatario(credenciales, destinatario) {
   const r = await llamar('agregarDestinatario', credenciales, { destinatario });
