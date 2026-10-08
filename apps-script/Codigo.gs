@@ -353,15 +353,32 @@ function _csvValor(v) {
   return s;
 }
 
-/** La hoja COTIZACIONES completa, como texto CSV. */
-function _cotizacionesCSV() {
-  var hoja = _hoja(HOJA_COTIZACIONES);
+/**
+ * Una hoja como texto CSV.
+ * ocultar: nombres de columna que NO deben salir nunca (los PIN).
+ * El filtro se aplica acá, al armar el texto, así que esas columnas no
+ * llegan a existir en la respuesta.
+ */
+function _hojaCSV(nombreHoja, ocultar) {
+  var hoja = _hoja(nombreHoja);
   var ultimaFila = hoja.getLastRow();
   var ultimaCol = hoja.getLastColumn();
+  var enc = _encabezados(hoja);
 
-  // Si todavía no hay cotizaciones, van solo los encabezados: Power Query
-  // necesita las columnas para no romperse con el Sheet vacío.
-  if (ultimaFila < 2) return _encabezados(hoja).map(_csvValor).join(',');
+  var fuera = {};
+  (ocultar || []).forEach(function (n) { fuera[String(n).trim().toUpperCase()] = true; });
+
+  // Índices de las columnas que sí se publican.
+  var visibles = [];
+  for (var j = 0; j < enc.length; j++) {
+    if (!fuera[String(enc[j] || '').trim().toUpperCase()]) visibles.push(j);
+  }
+
+  // Si no hay datos, van solo los encabezados: Power Query necesita las
+  // columnas para no romperse con la hoja vacía.
+  if (ultimaFila < 2) {
+    return visibles.map(function (j) { return _csvValor(enc[j]); }).join(',');
+  }
 
   var valores = hoja.getRange(1, 1, ultimaFila, ultimaCol).getValues();
   var lineas = [];
@@ -369,9 +386,24 @@ function _cotizacionesCSV() {
     var fila = valores[i];
     var vacia = fila.every(function (v) { return v === '' || v === null; });
     if (vacia) continue;
-    lineas.push(fila.map(_csvValor).join(','));
+    lineas.push(visibles.map(function (j) { return _csvValor(fila[j]); }).join(','));
   }
   return lineas.join('\n');
+}
+
+/**
+ * Traduce el parámetro 'hoja' de la URL al nombre real de la hoja.
+ * Sin parámetro devuelve COTIZACIONES, para que la consulta de Excel que ya
+ * estaba hecha siga funcionando sin tocarla.
+ */
+function _hojaPedida(nombre) {
+  var n = String(nombre || '').trim().toUpperCase();
+  if (n === '' || n === 'COTIZACIONES') return { hoja: HOJA_COTIZACIONES, ocultar: [] };
+  if (n === 'DESTINATARIOS') return { hoja: HOJA_DESTINATARIOS, ocultar: [] };
+  // USUARIOS sale sin la columna PIN: sirve para ver quién tiene acceso,
+  // nunca para conocer las claves.
+  if (n === 'USUARIOS') return { hoja: HOJA_USUARIOS, ocultar: ['PIN'] };
+  throw new Error('Hoja no disponible: ' + nombre);
 }
 
 function _textoPlano(txt) {
@@ -380,8 +412,10 @@ function _textoPlano(txt) {
 
 /**
  * Punto de entrada por GET.
- *  · ...?accion=csv&clave=SU-CLAVE  → las cotizaciones en CSV, para el Excel.
- *  · sin parámetros                 → solo confirma que el servicio está vivo.
+ *  · ...?accion=csv&clave=SU-CLAVE                        → COTIZACIONES
+ *  · ...?accion=csv&clave=SU-CLAVE&hoja=DESTINATARIOS     → DESTINATARIOS
+ *  · ...?accion=csv&clave=SU-CLAVE&hoja=USUARIOS          → USUARIOS sin PIN
+ *  · sin parámetros                                       → confirma que vive.
  */
 function doGet(e) {
   var p = (e && e.parameter) || {};
@@ -391,7 +425,8 @@ function doGet(e) {
       return _textoPlano('ERROR: clave incorrecta.');
     }
     try {
-      return _textoPlano(_cotizacionesCSV());
+      var pedido = _hojaPedida(p.hoja);
+      return _textoPlano(_hojaCSV(pedido.hoja, pedido.ocultar));
     } catch (err) {
       return _textoPlano('ERROR: ' + (err.message || err));
     }
@@ -434,6 +469,8 @@ function probarConexion() {
     Logger.log('ATENCION: todavia no cambia CLAVE_LECTURA (arriba del todo).');
   } else {
     Logger.log('Para el Excel, use su URL /exec seguida de:');
-    Logger.log('   ?accion=csv&clave=%s', CLAVE_LECTURA);
+    Logger.log('   cotizaciones:  ?accion=csv&clave=%s', CLAVE_LECTURA);
+    Logger.log('   destinatarios: ?accion=csv&clave=%s&hoja=DESTINATARIOS', CLAVE_LECTURA);
+    Logger.log('   usuarios:      ?accion=csv&clave=%s&hoja=USUARIOS', CLAVE_LECTURA);
   }
 }
