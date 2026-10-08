@@ -201,10 +201,6 @@ function LoginScreen({ onLogin }) {
           {cargando ? 'Verificando…' : 'Ingresar'}
         </button>
 
-        <p className="login-pie">
-          El usuario y el PIN se validan contra la hoja USUARIOS de la base compartida.
-          Para revocar un acceso, cambie ACTIVO a NO en esa hoja.
-        </p>
       </form>
     </div>
   );
