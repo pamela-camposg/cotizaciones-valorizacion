@@ -28,6 +28,11 @@ var ULTIMO_ID_HISTORICO = 1666;
 // Zona horaria para la fecha de registro.
 var ZONA_HORARIA = 'America/Santiago';
 
+// CLAVE DE LECTURA para el Excel (Power Query).
+// CAMBIE esto por una clave suya, larga y sin sentido. Ej: 'kx7m2p9qw4zt6vn8'.
+// Quien la tenga puede leer las cotizaciones: trátela como una contraseña.
+var CLAVE_LECTURA = 'CAMBIE-ESTA-CLAVE-POR-UNA-SUYA';
+
 /* ====================== UTILIDADES ====================== */
 
 function _libro() {
@@ -198,26 +203,67 @@ function accionGetCotizaciones(p) {
 }
 
 function accionGuardarCotizacion(p) {
-  var u = _validarCredenciales(p.usuario, p.pin);
+  // Una sola cotización es el caso de una sola línea.
   if (!p.cotizacion) throw new Error('No se recibió la cotización.');
+  var r = _guardarVarias(p, [p.cotizacion]);
+  return _ok({ id: r.ids[0] });
+}
 
-  // El bloqueo evita que dos personas guardando al mismo tiempo obtengan
-  // el mismo correlativo.
+/**
+ * Guarda varias líneas de una misma cotización. Cada línea es un residuo
+ * con su propio precio, y cada una recibe su propio correlativo.
+ *
+ * Se escriben todas dentro de un mismo bloqueo: así los correlativos de una
+ * misma cotización quedan consecutivos, aunque otra persona esté guardando
+ * al mismo tiempo.
+ */
+function accionGuardarCotizaciones(p) {
+  if (!p.cotizaciones || !p.cotizaciones.length) {
+    throw new Error('No se recibió ninguna línea de cotización.');
+  }
+  var r = _guardarVarias(p, p.cotizaciones);
+  return _ok({ ids: r.ids });
+}
+
+function _guardarVarias(p, lineas) {
+  var u = _validarCredenciales(p.usuario, p.pin);
+
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     var hoja = _hoja(HOJA_COTIZACIONES);
-    var id = _siguienteId(hoja);
+    var enc = _encabezados(hoja);
+    var fecha = Utilities.formatDate(new Date(), ZONA_HORARIA, 'yyyy-MM-dd');
 
-    var registro = p.cotizacion;
-    registro['ID'] = id;
-    registro['FECHA'] = Utilities.formatDate(new Date(), ZONA_HORARIA, 'yyyy-MM-dd');
-    // El responsable se toma de la sesión validada, nunca de lo que
-    // mande el cliente.
-    registro['RESPONSABLE'] = u.usuario;
+    // El primer correlativo libre; de ahí en adelante son consecutivos.
+    var primero = _siguienteId(hoja);
+    var n = parseInt(String(primero).replace('COT-', ''), 10);
 
-    _agregarFila(hoja, registro);
-    return _ok({ id: id });
+    var ids = [];
+    var filas = [];
+
+    for (var i = 0; i < lineas.length; i++) {
+      var registro = lineas[i];
+      var id = 'COT-' + ('00000' + (n + i)).slice(-5);
+      ids.push(id);
+
+      registro['ID'] = id;
+      registro['FECHA'] = fecha;
+      // El responsable sale de la sesión validada, nunca de lo que mande
+      // el cliente.
+      registro['RESPONSABLE'] = u.usuario;
+
+      // Se mapea por nombre de encabezado, igual que _agregarFila.
+      filas.push(enc.map(function (h) {
+        var v = registro[String(h).trim()];
+        return (v === undefined || v === null) ? '' : v;
+      }));
+    }
+
+    // Una sola escritura para todas las líneas: más rápido y atómico.
+    hoja.getRange(hoja.getLastRow() + 1, 1, filas.length, enc.length).setValues(filas);
+
+    return { ids: ids };
   } finally {
     lock.releaseLock();
   }
@@ -270,6 +316,7 @@ var ACCIONES = {
   getDestinatarios: accionGetDestinatarios,
   getCotizaciones: accionGetCotizaciones,
   guardarCotizacion: accionGuardarCotizacion,
+  guardarCotizaciones: accionGuardarCotizaciones,
   agregarDestinatario: accionAgregarDestinatario
 };
 
@@ -293,8 +340,63 @@ function doPost(e) {
   }
 }
 
-/** Solo para comprobar en el navegador que la implementación quedó viva. */
-function doGet() {
+/* ====================== SALIDA CSV PARA EL EXCEL ====================== */
+
+/** Escapa un valor para CSV: comas, comillas y saltos no rompen la columna. */
+function _csvValor(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd');
+  var s = String(v);
+  if (s.indexOf('"') >= 0 || s.indexOf(',') >= 0 || s.indexOf('\n') >= 0) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+/** La hoja COTIZACIONES completa, como texto CSV. */
+function _cotizacionesCSV() {
+  var hoja = _hoja(HOJA_COTIZACIONES);
+  var ultimaFila = hoja.getLastRow();
+  var ultimaCol = hoja.getLastColumn();
+
+  // Si todavía no hay cotizaciones, van solo los encabezados: Power Query
+  // necesita las columnas para no romperse con el Sheet vacío.
+  if (ultimaFila < 2) return _encabezados(hoja).map(_csvValor).join(',');
+
+  var valores = hoja.getRange(1, 1, ultimaFila, ultimaCol).getValues();
+  var lineas = [];
+  for (var i = 0; i < valores.length; i++) {
+    var fila = valores[i];
+    var vacia = fila.every(function (v) { return v === '' || v === null; });
+    if (vacia) continue;
+    lineas.push(fila.map(_csvValor).join(','));
+  }
+  return lineas.join('\n');
+}
+
+function _textoPlano(txt) {
+  return ContentService.createTextOutput(txt).setMimeType(ContentService.MimeType.TEXT);
+}
+
+/**
+ * Punto de entrada por GET.
+ *  · ...?accion=csv&clave=SU-CLAVE  → las cotizaciones en CSV, para el Excel.
+ *  · sin parámetros                 → solo confirma que el servicio está vivo.
+ */
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+
+  if (p.accion === 'csv') {
+    if (String(p.clave || '') !== CLAVE_LECTURA) {
+      return _textoPlano('ERROR: clave incorrecta.');
+    }
+    try {
+      return _textoPlano(_cotizacionesCSV());
+    } catch (err) {
+      return _textoPlano('ERROR: ' + (err.message || err));
+    }
+  }
+
   return _json({
     ok: true,
     servicio: 'API Cotizaciones de Valorización',
@@ -325,5 +427,13 @@ function probarConexion() {
 
   if (conPin.length === 0) {
     Logger.log('ATENCION: ningun usuario tiene PIN. Nadie podra entrar.');
+  }
+
+  Logger.log('');
+  if (CLAVE_LECTURA === 'CAMBIE-ESTA-CLAVE-POR-UNA-SUYA') {
+    Logger.log('ATENCION: todavia no cambia CLAVE_LECTURA (arriba del todo).');
+  } else {
+    Logger.log('Para el Excel, use su URL /exec seguida de:');
+    Logger.log('   ?accion=csv&clave=%s', CLAVE_LECTURA);
   }
 }
