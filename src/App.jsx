@@ -1,14 +1,45 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from 'react';
 import * as XLSX from 'xlsx';
 import * as api from './api.js';
-import { RESIDUOS_TREE, LISTAS, DESTINATARIOS_SEED } from './data.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
-   1 · DATOS DERIVADOS
+   1 · CATÁLOGO
+   Residuos, listas y comunas vienen del Google Sheet al iniciar sesión, no
+   de un archivo dentro de la app. Así editar el Sheet basta para cambiar lo
+   que ofrece el formulario, sin tocar el código.
    ══════════════════════════════════════════════════════════════════════════ */
-const REGION_BY_COMUNA = Object.fromEntries(LISTAS.COMUNA_REGION);
-const COMUNAS = LISTAS.COMUNA_REGION.map((c) => c[0]);
 const BASE = import.meta.env.BASE_URL;
+
+const CatalogoCtx = createContext(null);
+function useCatalogo() { return useContext(CatalogoCtx); }
+
+/* Listas de respaldo: si una columna falta en la hoja LISTAS, el formulario
+   igual se puede usar en vez de quedar con un desplegable vacío. */
+const RESPALDO = {
+  TIPO_SERVICIO: ['En planta', 'Con retiro'],
+  CANAL_COTIZACION: ['Correo', 'Teléfono'],
+  TIPO_NEGOCIO: ['Venta', 'Compra/Pago'],
+  UNIDAD: [],
+};
+
+/* Arma el catálogo que consumen los componentes. */
+function armarCatalogo(datos) {
+  const listas = datos.listas || {};
+  const pares = listas.COMUNA_REGION || [];
+  const lista = (k) => (listas[k] && listas[k].length ? listas[k] : (RESPALDO[k] || []));
+  return {
+    residuos: datos.residuos || {},
+    listas: {
+      UNIDAD: lista('UNIDAD'),
+      TIPO_SERVICIO: lista('TIPO_SERVICIO'),
+      CANAL_COTIZACION: lista('CANAL_COTIZACION'),
+      TIPO_NEGOCIO: lista('TIPO_NEGOCIO'),
+      SISTEMA_DECLARACION: lista('SISTEMA_DECLARACION'),
+    },
+    comunas: pares.map((p) => p[0]),
+    regionPorComuna: Object.fromEntries(pares),
+  };
+}
 
 /* Cada nodo del árbol viene como "Nombre|COD": se parte por el último "|". */
 function splitKey(key) {
@@ -105,15 +136,16 @@ function Auto({ value, placeholder }) {
    ══════════════════════════════════════════════════════════════════════════ */
 function BuscadorResiduo({ onClose, onSelect }) {
   const [q, setQ] = useState('');
+  const { residuos: T } = useCatalogo();
 
   const resultados = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (needle.length < 2) return [];
     const out = [];
-    for (const pk of Object.keys(RESIDUOS_TREE)) {
-      for (const fk of Object.keys(RESIDUOS_TREE[pk])) {
-        for (const mk of Object.keys(RESIDUOS_TREE[pk][fk])) {
-          for (const tk of Object.keys(RESIDUOS_TREE[pk][fk][mk])) {
+    for (const pk of Object.keys(T)) {
+      for (const fk of Object.keys(T[pk])) {
+        for (const mk of Object.keys(T[pk][fk])) {
+          for (const tk of Object.keys(T[pk][fk][mk])) {
             if (splitKey(tk).name.toLowerCase().includes(needle)) out.push({ pk, fk, mk, tk });
             if (out.length >= 40) return out;
           }
@@ -121,7 +153,7 @@ function BuscadorResiduo({ onClose, onSelect }) {
       }
     }
     return out;
-  }, [q]);
+  }, [q, T]);
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -159,6 +191,25 @@ function LoginScreen({ onLogin }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [usuarios, setUsuarios] = useState([]);
+  const [buscandoUsuarios, setBuscandoUsuarios] = useState(true);
+
+  /* Los usuarios salen de la hoja USUARIOS del Sheet, no de una lista
+     escrita en el código: dar de alta o revocar se hace allá. */
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const u = await api.getUsuarios();
+        if (!cancelado) setUsuarios(u);
+      } catch (err) {
+        if (!cancelado) setError('No se pudo cargar la lista de usuarios: ' + err.message);
+      } finally {
+        if (!cancelado) setBuscandoUsuarios(false);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -184,9 +235,16 @@ function LoginScreen({ onLogin }) {
         <p className="sub">Registro de cotizaciones de valorización y eliminación de residuos.</p>
 
         <Field label="Usuario" req>
-          <select value={usuario} onChange={(e) => setUsuario(e.target.value)} disabled={cargando}>
-            <option value="">Seleccione su usuario…</option>
-            {LISTAS.RESPONSABLE.map((r) => <option key={r} value={r}>{r}</option>)}
+          <select value={usuario} onChange={(e) => setUsuario(e.target.value)}
+            disabled={cargando || buscandoUsuarios}>
+            <option value="">
+              {buscandoUsuarios ? 'Cargando usuarios…' : 'Seleccione su usuario…'}
+            </option>
+            {usuarios.map((u) => (
+              <option key={u.usuario} value={u.usuario}>
+                {u.nombre ? `${u.nombre} (${u.usuario})` : u.usuario}
+              </option>
+            ))}
           </select>
         </Field>
 
@@ -210,7 +268,7 @@ function LoginScreen({ onLogin }) {
    5b · UNA LÍNEA DE RESIDUO (residuo + precio = un código de cotización)
    ══════════════════════════════════════════════════════════════════════════ */
 function LineaResiduo({ linea: l, indice, total, onChange, onQuitar, onBuscar }) {
-  const T = RESIDUOS_TREE;
+  const { residuos: T, listas } = useCatalogo();
   const opP = Object.keys(T);
   const opF = l.pk ? Object.keys(T[l.pk]) : [];
   const opM = l.fk ? Object.keys(T[l.pk][l.fk]) : [];
@@ -290,13 +348,13 @@ function LineaResiduo({ linea: l, indice, total, onChange, onQuitar, onBuscar })
 
       <div className="linea-precio">
         <Field label="Negocio" req>
-          <Chips options={LISTAS.TIPO_NEGOCIO} value={l.tipoNegocio}
+          <Chips options={listas.TIPO_NEGOCIO} value={l.tipoNegocio}
             onChange={(v) => onChange({ tipoNegocio: v })} />
         </Field>
         <Field label="Unidad" req>
           <select value={l.unidad} onChange={(e) => onChange({ unidad: e.target.value })}>
             <option value="">Moneda y medida…</option>
-            {LISTAS.UNIDAD.map((u) => <option key={u} value={u}>{u}</option>)}
+            {listas.UNIDAD.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </Field>
         <Field label="Valor" req>
@@ -354,6 +412,10 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
   const [buscando, setBuscando] = useState(null);   // uid de la línea que busca
   const [guardando, setGuardando] = useState(false);
   const [query, setQuery] = useState('');
+  /* La fecha parte en hoy pero se puede cambiar: a veces se registra una
+     cotización que llegó días antes. */
+  const [fecha, setFecha] = useState(todayISO());
+  const { listas, comunas: COMUNAS, regionPorComuna: REGION_BY_COMUNA } = useCatalogo();
 
   /* Cambia un campo de una línea. Al tocar un nivel de la cascada se limpian
      los de abajo, porque dejan de ser válidos. */
@@ -433,7 +495,7 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
     setLineas([nuevaLinea()]); setAdj(VACIO_ADJ);
   }
   function limpiarTodo() {
-    setLog(VACIO_LOG); setEst(VACIO_EST); setQuery('');
+    setLog(VACIO_LOG); setEst(VACIO_EST); setQuery(''); setFecha(todayISO());
     setLineas([nuevaLinea()]); setAdj(VACIO_ADJ);
   }
 
@@ -442,6 +504,8 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
     && l.valor !== '' && !isNaN(Number(l.valor)));
 
   function validar() {
+    if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return 'Revise la fecha de la cotización.';
+    if (fecha > todayISO()) return 'La fecha no puede ser futura.';
     if (!est.nombreFantasia) return 'Falta el establecimiento (Apartado 2).';
     if (est.esNuevo && (!est.razonSocial || !est.rut || !est.comunaEstablecimiento))
       return 'Del destinatario nuevo faltan razón social, RUT o comuna.';
@@ -523,7 +587,7 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
         UNIDAD: l.unidad,
       }));
 
-      const ids = await onSaveQuotes(registros);
+      const ids = await onSaveQuotes(registros, fecha);
       notify(ids.length === 1
         ? `Cotización ${ids[0]} guardada.`
         : `${ids.length} cotizaciones guardadas: ${ids[0]} a ${ids[ids.length - 1]}.`);
@@ -534,7 +598,7 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
     } finally {
       setGuardando(false);
     }
-  }, [log, est, lineas, adj, completas, onSaveQuotes, onAddDestinatario, notify]);
+  }, [log, est, lineas, adj, fecha, completas, onSaveQuotes, onAddDestinatario, notify]);
 
   /* ---------- atajos ---------- */
   useEffect(() => {
@@ -580,22 +644,35 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
         <div className="card-head">
           <span className="fmtNum">01</span>
           <h2>Logística y control general</h2>
-          <span className="tag">{todayISO()} · {sesion.usuario}</span>
+          <span className="tag">{sesion.usuario}</span>
         </div>
         <p className="card-note">
-          La fecha, el correlativo y el responsable los asigna el sistema al guardar.
+          El correlativo y el responsable los asigna el sistema al guardar.
+          La fecha viene con la de hoy, y se puede cambiar si la cotización es anterior.
         </p>
+
+        <div className="form-section">Cuándo</div>
+        <div className="row2">
+          <Field label="Fecha de la cotización" req
+            nota={fecha !== todayISO() ? 'distinta de hoy' : undefined}>
+            <input type="date" value={fecha} max={todayISO()}
+              onChange={(e) => setFecha(e.target.value)} />
+          </Field>
+          <Field label="Responsable" auto>
+            <Auto value={sesion.nombre ? `${sesion.nombre} (${sesion.usuario})` : sesion.usuario} />
+          </Field>
+        </div>
 
         <div className="form-section">Cómo se cotiza</div>
         <div className="row2">
           <Field label="Tipo de servicio" req>
-            <Chips options={LISTAS.TIPO_SERVICIO} value={log.tipoServicio}
+            <Chips options={listas.TIPO_SERVICIO} value={log.tipoServicio}
               onChange={(v) => setLog((p) => ({ ...p, tipoServicio: v,
                 comunaOrigen: v === 'En planta' ? '' : p.comunaOrigen,
                 origen: v === 'En planta' ? '' : p.origen }))} />
           </Field>
           <Field label="Canal de cotización" req>
-            <Chips options={LISTAS.CANAL_COTIZACION} value={log.canalCotizacion}
+            <Chips options={listas.CANAL_COTIZACION} value={log.canalCotizacion}
               onChange={(v) => setLog((p) => ({ ...p, canalCotizacion: v }))} />
           </Field>
         </div>
@@ -822,6 +899,7 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
    7 · HISTORIAL
    ══════════════════════════════════════════════════════════════════════════ */
 function HistorialPanel({ cotizaciones, onImport }) {
+  const { listas } = useCatalogo();
   const [fMaterial, setFMaterial] = useState('');
   const [fRegion, setFRegion] = useState('');
   const [fNegocio, setFNegocio] = useState('');
@@ -904,7 +982,7 @@ function HistorialPanel({ cotizaciones, onImport }) {
             <label>Negocio</label>
             <select value={fNegocio} onChange={(e) => setFNegocio(e.target.value)}>
               <option value="">Ambos</option>
-              {LISTAS.TIPO_NEGOCIO.map((t) => <option key={t} value={t}>{t}</option>)}
+              {listas.TIPO_NEGOCIO.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div className="right">
@@ -974,6 +1052,7 @@ export default function App() {
   /* La sesión vive solo en memoria: al recargar hay que ingresar el PIN. */
   const [sesion, setSesion] = useState(null);
   const [vista, setVista] = useState('form');
+  const [catalogo, setCatalogo] = useState(null);
   const [destinatarios, setDestinatarios] = useState([]);
   const [cotizaciones, setCotizaciones] = useState([]);
   const [cargado, setCargado] = useState(false);
@@ -987,30 +1066,24 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast({ txt: '', malo: false }), 4200);
   }, []);
 
+  /* Una sola petición al entrar: catálogo de residuos, listas, destinatarios
+     y las cotizaciones recientes. Apps Script atiende de a una por usuario,
+     así que juntarlas es más rápido y evita que rechace alguna. */
   useEffect(() => {
     if (!sesion) return;
     let cancelado = false;
     (async () => {
       setCargado(false); setErrorCarga('');
       try {
-        /* Una petición después de la otra, no las dos a la vez: Apps Script
-           atiende de a una por usuario y al recibirlas juntas a veces
-           responde con una página de error en lugar de datos. */
-        const dest = await api.getDestinatarios(sesion);
+        const datos = await api.getInicio(sesion);
         if (cancelado) return;
-        const cots = await api.getCotizaciones(sesion);
-        if (cancelado) return;
-        setDestinatarios(dest);
-        setCotizaciones(cots);
+        setCatalogo(armarCatalogo(datos));
+        setDestinatarios(datos.destinatarios);
+        setCotizaciones(datos.cotizaciones);
       } catch (err) {
         if (cancelado) return;
+        /* Sin catálogo no hay formulario que valga: todo vive en el Sheet. */
         setErrorCarga(err.message);
-        /* Respaldo local: permite consultar aunque no se pueda guardar. */
-        setDestinatarios(DESTINATARIOS_SEED.rows.map((r) => ({
-          NOMBRE_FANTASIA: r[0], SISTEMA_DECLARACION: r[1], CODIGO_ESTABLECIMIENTO: r[2],
-          RAZON_SOCIAL: r[3], RUT: r[4], NOMBRE_ESTABLECIMIENTO: r[5],
-          COMUNA_ESTABLECIMIENTO: r[6], REGION_ESTABLECIMIENTO: r[7],
-        })));
       } finally {
         if (!cancelado) setCargado(true);
       }
@@ -1023,19 +1096,21 @@ export default function App() {
     if (!yaEstaba) setDestinatarios((p) => [...p, fila]);
   }
 
-  async function handleSaveQuotes(registros) {
-    /* Los ID, la fecha y el responsable los pone el servidor: así el
-       correlativo no se rompe si dos personas guardan a la vez, y las líneas
-       de una misma cotización quedan con códigos consecutivos. */
-    const ids = await api.guardarCotizaciones(sesion, registros);
-    setCotizaciones((p) => [...p, ...registros.map((r, i) => ({
-      ...r, ID: ids[i], FECHA: todayISO(), RESPONSABLE: sesion.usuario,
-    }))]);
+  async function handleSaveQuotes(registros, fecha) {
+    /* Los ID y el responsable los pone el servidor: así el correlativo no se
+       rompe si dos personas guardan a la vez, y las líneas de una misma
+       cotización quedan con códigos consecutivos. La fecha sí viene del
+       formulario, porque puede ser una cotización recibida hace días. */
+    const ids = await api.guardarCotizaciones(sesion, registros, fecha);
+    setCotizaciones((p) => [...registros.map((r, i) => ({
+      ...r, ID: ids[i], FECHA: fecha, RESPONSABLE: sesion.usuario,
+    })), ...p]);
     return ids;
   }
 
   function handleImport(filas) {
-    /* Solo alimenta la vista: el histórico sigue viviendo en el Excel. */
+    /* Solo alimenta la vista. El histórico completo vive en el Sheet y en
+       el Excel; acá se cargan las que falten para poder compararlas. */
     setCotizaciones((p) => {
       const ids = new Set(p.map((c) => c.ID));
       const nuevas = filas.filter((f) => !ids.has(f.ID));
@@ -1047,7 +1122,7 @@ export default function App() {
   if (!sesion) return <LoginScreen onLogin={setSesion} />;
 
   return (
-    <>
+    <CatalogoCtx.Provider value={catalogo}>
       <MarcaDeAgua />
 
       <header className="topbar">
@@ -1075,15 +1150,16 @@ export default function App() {
       <div className={'canvas' + (vista === 'hist' ? ' ancho' : '')}>
         {errorCarga && (
           <div className="aviso malo" style={{ marginBottom: '1.25rem' }}>
-            <b>No se pudo conectar con la base compartida.</b> Se está mostrando el
-            catálogo local: puede consultar, pero lo que registre no se guardará.
-            Detalle: {errorCarga}
+            <b>No se pudo cargar la base.</b> Los residuos, las listas y los
+            destinatarios viven en la planilla compartida, así que sin conexión
+            no se puede cotizar. Vuelva a entrar en unos segundos.
+            <br />Detalle: {errorCarga}
           </div>
         )}
 
         {!cargado ? (
           <div className="empty-note" style={{ marginTop: '3rem' }}>Cargando la base…</div>
-        ) : vista === 'form' ? (
+        ) : !catalogo ? null : vista === 'form' ? (
           <QuoteForm sesion={sesion} destinatarios={destinatarios}
             onSaveQuotes={handleSaveQuotes} onAddDestinatario={handleAddDestinatario} notify={notify} />
         ) : (
@@ -1101,6 +1177,6 @@ export default function App() {
       <div id="toast" className={(toast.txt ? 'on' : '') + (toast.malo ? ' malo' : '')}>
         {toast.txt}
       </div>
-    </>
+    </CatalogoCtx.Provider>
   );
 }
