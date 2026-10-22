@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from 'react';
-import * as XLSX from 'xlsx';
 import * as api from './api.js';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -898,12 +897,11 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
 /* ══════════════════════════════════════════════════════════════════════════
    7 · HISTORIAL
    ══════════════════════════════════════════════════════════════════════════ */
-function HistorialPanel({ cotizaciones, onImport }) {
+function HistorialPanel({ cotizaciones }) {
   const { listas } = useCatalogo();
   const [fMaterial, setFMaterial] = useState('');
   const [fRegion, setFRegion] = useState('');
   const [fNegocio, setFNegocio] = useState('');
-  const archivo = useRef(null);
 
   const materiales = useMemo(
     () => [...new Set(cotizaciones.map((c) => c.MATERIAL).filter(Boolean))].sort(), [cotizaciones]);
@@ -921,38 +919,14 @@ function HistorialPanel({ cotizaciones, onImport }) {
   const promedio = valores.length ? valores.reduce((s, v) => s + v, 0) / valores.length : 0;
   const establecimientos = new Set(filtradas.map((c) => c.NOMBRE_FANTASIA)).size;
 
-  function leerArchivo(e) {
-    const f = e.target.files[0];
-    if (!f) return;
-    const lector = new FileReader();
-    lector.onload = (ev) => {
-      try {
-        const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
-        if (!wb.SheetNames.includes('COTIZACIONES')) {
-          alert('El archivo no tiene una hoja llamada COTIZACIONES.');
-          return;
-        }
-        const filas = XLSX.utils.sheet_to_json(wb.Sheets['COTIZACIONES'], { defval: '' })
-          .filter((r) => r.ID)
-          .map((r) => ({ ...r, FECHA: r.FECHA instanceof Date
-            ? r.FECHA.toISOString().slice(0, 10) : String(r.FECHA || '') }));
-        onImport(filas);
-      } catch (err) {
-        alert('No se pudo leer el archivo: ' + err.message);
-      }
-    };
-    lector.readAsArrayBuffer(f);
-    e.target.value = '';
-  }
-
   return (
     <>
       <div className="page-head">
         <span className="lime-rule" />
         <h1 className="premium-heading">Historial de cotizaciones</h1>
         <p className="bajada">
-          Las cotizaciones registradas en la base compartida. El histórico anterior
-          a esta herramienta vive en el Excel y se puede cargar aquí para consultarlo.
+          Las cotizaciones más recientes de la base compartida. El histórico
+          completo se consulta en el Excel, que es donde conviene analizarlo.
         </p>
       </div>
 
@@ -984,13 +958,6 @@ function HistorialPanel({ cotizaciones, onImport }) {
               <option value="">Ambos</option>
               {listas.TIPO_NEGOCIO.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
-          </div>
-          <div className="right">
-            <button className="btn secondary" onClick={() => archivo.current.click()}>
-              Cargar histórico (.xlsx)
-            </button>
-            <input ref={archivo} type="file" accept=".xlsx,.xls"
-              style={{ display: 'none' }} onChange={leerArchivo} />
           </div>
         </div>
 
@@ -1031,7 +998,7 @@ function HistorialPanel({ cotizaciones, onImport }) {
             {filtradas.length === 0 && (
               <div className="empty-note" style={{ border: 0, margin: '1rem' }}>
                 {cotizaciones.length === 0
-                  ? 'Todavía no hay cotizaciones registradas. Use «Cargar histórico» para revisar las anteriores.'
+                  ? 'No se pudieron cargar las cotizaciones.'
                   : 'Ningún registro coincide con estos filtros.'}
               </div>
             )}
@@ -1108,17 +1075,6 @@ export default function App() {
     return ids;
   }
 
-  function handleImport(filas) {
-    /* Solo alimenta la vista. El histórico completo vive en el Sheet y en
-       el Excel; acá se cargan las que falten para poder compararlas. */
-    setCotizaciones((p) => {
-      const ids = new Set(p.map((c) => c.ID));
-      const nuevas = filas.filter((f) => !ids.has(f.ID));
-      notify(`${nuevas.length} cotizaciones cargadas para consulta.`);
-      return [...p, ...nuevas];
-    });
-  }
-
   if (!sesion) return <LoginScreen onLogin={setSesion} />;
 
   return (
@@ -1163,7 +1119,7 @@ export default function App() {
           <QuoteForm sesion={sesion} destinatarios={destinatarios}
             onSaveQuotes={handleSaveQuotes} onAddDestinatario={handleAddDestinatario} notify={notify} />
         ) : (
-          <HistorialPanel cotizaciones={cotizaciones} onImport={handleImport} />
+          <HistorialPanel cotizaciones={cotizaciones} />
         )}
       </div>
 
