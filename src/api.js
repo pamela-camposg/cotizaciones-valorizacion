@@ -84,6 +84,29 @@ async function llamar(accion, credenciales, extra) {
   return datos;
 }
 
+/**
+ * La lista de usuarios para el desplegable del login.
+ * No necesita credenciales: todavía no hay sesión. Nunca trae los PIN.
+ */
+export async function getUsuarios() {
+  const r = await llamar('getUsuarios', null);
+  return r.usuarios || [];
+}
+
+/**
+ * Todo lo que la app necesita al entrar, en una sola petición:
+ * catálogo de residuos, listas, destinatarios y cotizaciones recientes.
+ */
+export async function getInicio(credenciales, limite) {
+  const r = await llamar('getInicio', credenciales, { limite });
+  return {
+    residuos: r.residuos || {},
+    listas: r.listas || {},
+    destinatarios: r.destinatarios || [],
+    cotizaciones: r.cotizaciones || [],
+  };
+}
+
 /** Valida usuario y PIN. Devuelve { usuario, nombre }. */
 export async function login(usuario, pin) {
   const r = await llamar('login', { usuario, pin });
@@ -113,8 +136,8 @@ export async function guardarCotizacion(credenciales, cotizacion) {
  * su propio código, y los códigos quedan consecutivos.
  * Devuelve el arreglo de códigos asignados, en el mismo orden.
  */
-export async function guardarCotizaciones(credenciales, cotizaciones) {
-  const r = await llamar('guardarCotizaciones', credenciales, { cotizaciones });
+export async function guardarCotizaciones(credenciales, cotizaciones, fecha) {
+  const r = await llamar('guardarCotizaciones', credenciales, { cotizaciones, fecha });
   return r.ids || [];
 }
 
