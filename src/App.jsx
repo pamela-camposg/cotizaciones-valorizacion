@@ -902,18 +902,27 @@ function HistorialPanel({ cotizaciones }) {
   const [fMaterial, setFMaterial] = useState('');
   const [fRegion, setFRegion] = useState('');
   const [fNegocio, setFNegocio] = useState('');
+  const [fValidacion, setFValidacion] = useState('');
 
   const materiales = useMemo(
     () => [...new Set(cotizaciones.map((c) => c.MATERIAL).filter(Boolean))].sort(), [cotizaciones]);
   const regiones = useMemo(
     () => [...new Set(cotizaciones.map((c) => c.REGION_ESTABLECIMIENTO).filter(Boolean))].sort(), [cotizaciones]);
 
+  /* Una cotización está rechazada si la revisión la marcó 'No'. Se compara
+     sin mayúsculas ni espacios porque en la hoja conviven 'No', 'NO' y 'no'. */
+  const rechazada = (c) => String(c.VALIDACION || '').trim().toUpperCase() === 'NO';
+
   const filtradas = useMemo(() => cotizaciones
     .filter((c) => (!fMaterial || c.MATERIAL === fMaterial)
       && (!fRegion || c.REGION_ESTABLECIMIENTO === fRegion)
-      && (!fNegocio || c.TIPO_NEGOCIO === fNegocio))
+      && (!fNegocio || c.TIPO_NEGOCIO === fNegocio)
+      && (!fValidacion
+        || (fValidacion === 'No' ? rechazada(c) : !rechazada(c))))
     .sort((a, b) => String(b.FECHA || '').localeCompare(String(a.FECHA || ''))),
-    [cotizaciones, fMaterial, fRegion, fNegocio]);
+    [cotizaciones, fMaterial, fRegion, fNegocio, fValidacion]);
+
+  const nRechazadas = useMemo(() => filtradas.filter(rechazada).length, [filtradas]);
 
   const valores = filtradas.map((c) => Number(c.VALOR)).filter((v) => !isNaN(v) && v !== 0);
   const promedio = valores.length ? valores.reduce((s, v) => s + v, 0) / valores.length : 0;
@@ -959,6 +968,14 @@ function HistorialPanel({ cotizaciones }) {
               {listas.TIPO_NEGOCIO.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+          <div className="field">
+            <label>Validación</label>
+            <select value={fValidacion} onChange={(e) => setFValidacion(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="Si">Solo válidas</option>
+              <option value="No">Solo rechazadas</option>
+            </select>
+          </div>
         </div>
 
         <div className="kpis">
@@ -966,6 +983,7 @@ function HistorialPanel({ cotizaciones }) {
           <div className="kpi"><b>{establecimientos}</b><span>Establecimientos</span></div>
           <div className="kpi"><b>{fmtNum(Math.round(promedio))}</b><span>Valor promedio</span></div>
           <div className="kpi"><b>{materiales.length}</b><span>Materiales</span></div>
+          <div className="kpi"><b>{nRechazadas}</b><span>Rechazadas</span></div>
         </div>
 
         <div className="tabla-box">
@@ -973,16 +991,21 @@ function HistorialPanel({ cotizaciones }) {
             <table className="datos">
               <thead>
                 <tr>
-                  {['Fecha', 'ID', 'Establecimiento', 'Región', 'Material', 'Tipo',
+                  {['Fecha', 'ID', 'Validación', 'Establecimiento', 'Región', 'Material', 'Tipo',
                     'Negocio', 'Valor', 'Unidad', 'Responsable'].map((h) => <th key={h}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {filtradas.slice(0, 400).map((c, i) => (
-                  <tr key={c.ID || i}>
+                  <tr key={c.ID || i} className={rechazada(c) ? 'rechazada' : undefined}>
                     {/* data-label alimenta la vista apilada en celular */}
                     <td data-label="Fecha">{c.FECHA}</td>
                     <td data-label="ID" className="destacado">{c.ID}</td>
+                    <td data-label="Validación">
+                      {rechazada(c)
+                        ? <span className="marca-no">Rechazada</span>
+                        : (c.VALIDACION || '—')}
+                    </td>
                     <td data-label="Establecimiento">{c.NOMBRE_FANTASIA || c.NOMBRE_ESTABLECIMIENTO}</td>
                     <td data-label="Región">{c.REGION_ESTABLECIMIENTO}</td>
                     <td data-label="Material">{c.MATERIAL}</td>
