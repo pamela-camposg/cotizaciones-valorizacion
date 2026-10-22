@@ -251,6 +251,15 @@ footer.footer{ border-top:1px solid var(--z200); background:#fff }
 .linea-resumen{ font-size:12.5px; color:var(--z500) }
 .linea-resumen b{ color:var(--tinta); font-weight:600 }
 
+/* ---------- BARRA DE GUARDAR ---------- */
+/* En pantalla grande es una fila al pie del formulario, alineada a la
+   derecha y con aire alrededor. En celular pasa a quedar fija abajo
+   (ver la sección de celular). */
+.guardar-barra{
+  display:flex; justify-content:flex-end; align-items:center; gap:.7rem;
+  margin:1.5rem 0 2.5rem;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    CELULAR Y TABLET
    El formulario se llena de pie en planta o en la calle, así que manda el
@@ -409,3 +418,12 @@ footer.footer{ border-top:1px solid var(--z200); background:#fff }
   .card{ border:0; box-shadow:none; padding:0 }
   header.topbar{ position:static }
 }
+
+/* ---------- COTIZACIONES RECHAZADAS EN EL HISTORIAL ---------- */
+/* No se ocultan: se atenúan. Esconderlas haría que alguien buscara una
+   cotización y concluyera que nunca se registró. */
+table.datos tbody tr.rechazada td{ color:var(--z400) }
+table.datos tbody tr.rechazada td.destacado{ color:var(--z500) }
+.marca-no{ display:inline-block; padding:.1rem .45rem; border:1px solid #EFCFCB;
+  background:var(--rojoBg); color:var(--rojo); font-size:10.5px; font-weight:600;
+  letter-spacing:.04em }
