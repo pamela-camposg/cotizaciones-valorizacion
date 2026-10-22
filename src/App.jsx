@@ -711,9 +711,10 @@ function QuoteForm({ sesion, destinatarios, onSaveQuotes, onAddDestinatario, not
         <div className="card-head">
           <span className="fmtNum">02</span>
           <h2>Establecimiento de destino</h2>
-          {est.nombreFantasia && (
-            <span className="tag">{est.esNuevo ? 'NUEVO' : 'EN LA BASE'}</span>
-          )}
+          {/* Solo se avisa cuando el destinatario es nuevo, porque eso sí
+              cambia lo que va a pasar al guardar. Que ya esté en la base se
+              nota en que los campos se completaron solos. */}
+          {est.esNuevo && <span className="tag">NUEVO</span>}
         </div>
         <p className="card-note">
           Escriba el nombre de fantasía. Si ya está en la base, el resto se completa solo.
