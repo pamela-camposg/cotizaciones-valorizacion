@@ -1,150 +1,177 @@
 # Cotizaciones de Valorización
 
-Herramienta web para registrar cotizaciones de valorización/eliminación de
-residuos (Apartados 1–5 según la hoja INSTRUCCIONES de
-`BBDD_cotizaciones_v1.xlsx`), con actualización automática de la base de
-destinatarios y un panel de historial.
+Herramienta web para registrar cotizaciones de valorización y eliminación de
+residuos. El equipo cotiza desde la app, todo queda en un Google Sheet, y el
+Excel refleja ese contenido para analizarlo.
 
-## 1. Requisitos
+---
 
-- Node.js 18 o superior
-- Una cuenta de GitHub
+## Cómo está armado
 
-## 2. Probar en tu computador
+```
+   app (GitHub Pages)  ──escribe y lee──►  Google Sheet  ──lee──►  Excel
+```
+
+**El Google Sheet es el único maestro.** Ahí viven los datos y la
+configuración: el catálogo de residuos, las listas de selección, los
+destinatarios, los usuarios y las cotizaciones.
+
+**La app no lleva catálogo propio.** Lo pide al Sheet cada vez que alguien
+inicia sesión, así que editar una celda allá cambia de inmediato lo que
+ofrece el formulario, sin tocar código ni volver a publicar.
+
+**El Excel solo lee.** Son consultas de Power Query que traen tres hojas del
+Sheet. Lo que se escriba en esas hojas del Excel se pierde al actualizar.
+
+La app llega al Sheet a través de un **Google Apps Script** publicado como
+aplicación web. Una página estática no puede tocar Drive por su cuenta: esa
+pieza es el puente, y su código está en `apps-script/Codigo.gs`.
+
+---
+
+## Las hojas del Google Sheet
+
+| Hoja | Qué contiene | Quién la edita |
+|---|---|---|
+| `COTIZACIONES` | Todas: el histórico y lo que entra por la app | La app escribe; la revisión marca VALIDACION |
+| `RESIDUOS` | Catálogo de residuos y sus códigos | A mano, en el Sheet |
+| `LISTAS` | Comunas, regiones, unidades, tipo de servicio, canal, tipo de negocio | A mano, en el Sheet |
+| `DESTINATARIOS` | Clientes y establecimientos | A mano, y la app agrega los nuevos |
+| `USUARIOS` | Usuario, PIN, nombre y si está activo | A mano |
+| `NOTAS` | Apuntes personales | — |
+
+---
+
+## Tareas frecuentes
+
+### Agregar un residuo, una comuna o una unidad
+
+Se edita la hoja correspondiente del Sheet. **No hay que tocar el código.**
+El cambio se ve la próxima vez que alguien entre a la app.
+
+En `RESIDUOS`, las columnas de código arman el `COD_RES` con sus seis
+segmentos, en este orden: peligrosidad, familia, material, tipo, estado y
+formato. `PE` es peligroso y `NP` no peligroso.
+
+### Dar de alta o revocar un usuario
+
+En la hoja `USUARIOS`:
+
+- **Alta**: agregar una fila con usuario, PIN, nombre y `ACTIVO = Si`
+- **Revocar**: cambiar `ACTIVO` a `No`. Es mejor que borrar la fila, porque
+  conserva el historial de quién registró cada cotización
+- **Cambiar un PIN**: se edita la celda y surte efecto de inmediato
+
+Solo los que tienen `ACTIVO = Si` aparecen en el desplegable del login.
+
+### Revisar cotizaciones
+
+La columna `VALIDACION` de `COTIZACIONES` acepta `Si` o `No`. La app graba
+`Si` al guardar; en la revisión se cambia a `No` lo que se rechace.
+
+Las marcadas `No` **desaparecen del Excel** pero siguen en el Sheet y en el
+historial de la app, donde se ven atenuadas y con una marca. Se ocultan del
+Excel para que no entren en los análisis, y se dejan visibles en la app para
+que nadie concluya que una cotización nunca se registró.
+
+---
+
+## Mantener el código
+
+### Cambiar la app
+
+Los archivos de `src/` se suben a GitHub y Actions publica solo. En
+`vite.config.js`, `base` tiene que calzar con el nombre del repositorio.
+
+Para probar en el computador hace falta Node.js 18 o superior:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Abre la URL que muestra la terminal (normalmente `http://localhost:5173`).
+### Cambiar el Apps Script
 
-## 3. Subir a GitHub
+Se pega el código en [script.google.com](https://script.google.com), se
+guarda, y después:
 
-```bash
-git init
-git add .
-git commit -m "Primera versión de la plataforma de cotizaciones"
-git branch -M main
-git remote add origin https://github.com/TU-USUARIO/TU-REPO.git
-git push -u origin main
+**Implementar → Gestionar implementaciones → lápiz → Versión: Nueva versión**
+
+Esto es importante: **guardar no basta**, la URL publicada sigue corriendo el
+código anterior hasta que se implementa una versión nueva.
+
+Y conviene usar siempre *Nueva versión*, no *Nueva implementación*. La
+segunda genera una URL distinta, y habría que actualizarla en `src/api.js` y
+en las tres consultas de Power Query.
+
+### Las consultas de Power Query
+
+Cada una trae una hoja del Sheet a través del script. La dirección va
+completa en una sola línea, incluyendo la clave de lectura:
+
+```
+.../exec?accion=csv&clave=LA-CLAVE&hoja=COTIZACIONES
 ```
 
-## 4. Publicar en GitHub Pages (automático)
+Armarla con el registro `Query` de Power Query **no funciona**: codifica los
+parámetros a su manera y la clave llega distinta al servidor.
 
-Este repo ya trae un workflow (`.github/workflows/deploy.yml`) que compila y
-publica la app cada vez que haces push a `main`. Solo falta:
+La de `COTIZACIONES` además filtra las rechazadas. Para revisarlas, se cambia
+ese `<> "NO"` por `= "NO"`.
 
-1. En `vite.config.js`, cambia `base: '/NOMBRE-DEL-REPO/'` por el nombre real
-   de tu repositorio (tiene que calzar exacto, con las mayúsculas/minúsculas).
-2. En GitHub → **Settings → Pages**, en "Build and deployment" selecciona
-   **GitHub Actions** como fuente.
-3. Haz push. En la pestaña **Actions** puedes ver el progreso; cuando termine,
-   tu app queda en `https://TU-USUARIO.github.io/TU-REPO/`.
+El refresco es manual: **Datos → Actualizar todo**, con el Excel abierto en
+el escritorio. Excel Online no puede actualizar consultas web sin un gateway
+de datos.
 
-Si prefieres desplegar a mano en vez de con Actions:
+---
 
-```bash
-npm run build
-npx gh-pages -d dist
-```
+## Numeración de cotizaciones
 
-## 5. Actualizar el catálogo de residuos o destinatarios
+El correlativo lo asigna el servidor, nunca el navegador, y usa un bloqueo
+para que dos personas guardando al mismo tiempo no reciban el mismo ID.
 
-Los datos de las hojas `RESIDUOS`, `LISTAS` y `DESTINATARIOS` de tu Excel
-están precompilados en `src/data.js` para que la app cargue rápido y no
-dependa de tener el Excel disponible en el navegador. Si esas hojas cambian
-(nuevos materiales, nuevas comunas, etc.), regenera ese archivo:
+Sale del mayor `COT-` que haya en la hoja `COTIZACIONES`. Por eso **borrar
+filas del final es riesgoso**: el número queda libre y se vuelve a usar. Para
+descartar una cotización, se marca `VALIDACION = No` en vez de borrarla.
 
-```bash
-pip install openpyxl
-python scripts/extract_data.py ruta/a/tu/nuevo/BBDD_cotizaciones.xlsx
-git add src/data.js
-git commit -m "Actualiza catálogo de residuos y destinatarios"
-git push
-```
+Cuando una cotización tiene varios residuos, cada línea recibe su propio
+código, y los códigos quedan consecutivos.
 
-Los **destinatarios nuevos que se agregan usando el formulario** (no desde
-el Excel) NO tocan este archivo — quedan guardados aparte, según se explica
-abajo.
+---
 
-## 6. Dónde se guardan los datos
+## Límites conocidos
 
-Los datos viven en un **Google Sheet**, al que la app accede mediante un
-**Google Apps Script** publicado como aplicación web (el código está en
-`apps-script/Codigo.gs`).
-
-Eso significa que la base es compartida: si alguien registra una cotización
-o un destinatario nuevo, el resto del equipo lo ve de inmediato.
-
-El Sheet tiene tres hojas:
-
-| Hoja | Para qué sirve |
-|---|---|
-| `COTIZACIONES` | Recibe cada cotización nueva. Parte vacía: el histórico vive en el Excel |
-| `DESTINATARIOS` | Fuente viva de establecimientos; crece desde el formulario |
-| `USUARIOS` | Usuario, PIN y estado ACTIVO de cada persona |
-
-### Si cambia la URL del Apps Script
-
-Cada vez que crees una **implementación nueva** del script, la URL cambia.
-Cuando pase, actualiza `API_URL` en `src/api.js` y vuelve a publicar.
-
-Para cambios en el código del script que NO deban cambiar la URL, usa
-**Implementar → Gestionar implementaciones → editar (lápiz) → Versión: Nueva
-versión**. Así la URL se mantiene.
-
-### Numeración de cotizaciones
-
-El correlativo lo asigna el servidor, no el navegador, y usa un bloqueo para
-que dos personas guardando al mismo tiempo no reciban el mismo ID. Continúa
-desde `COT-01667`, que es la siguiente al último registro del Excel histórico
-(`COT-01666`). Ese piso está en la constante `ULTIMO_ID_HISTORICO` del script.
-
-## 7. Usuarios y acceso
-
-El login valida usuario y PIN **en el servidor**, contra la hoja `USUARIOS`.
-Los PIN nunca se envían al navegador ni aparecen en ninguna respuesta.
-
-Para administrar el acceso, edita esa hoja directamente:
-
-- **Dar de alta**: agrega una fila con usuario, PIN y ACTIVO = `SI`
-- **Revocar**: cambia ACTIVO a `NO` (mejor que borrar la fila: conserva el historial)
-- **Cambiar un PIN**: edítalo en la celda; surte efecto de inmediato
-
-Alcance real de esta protección: la URL del servicio es pública, así que el
+**El PIN no es seguridad real.** La URL del servicio es pública, así que el
 PIN es la única barrera. Sirve para dejar registro de quién ingresó cada
 cotización y para impedir que un tercero cualquiera escriba en la base, pero
-no equivale a una autenticación corporativa. Por eso conviene usar PIN de 6
-o más dígitos sin patrones obvios, y compartir el Sheet solo con quien deba
-administrarlo — los usuarios de la app no necesitan acceso al Sheet.
+no equivale a una autenticación corporativa. Conviene usar PIN de 6 o más
+dígitos sin patrones, y compartir el Sheet solo con quien lo administre: los
+usuarios de la app no necesitan acceso.
 
-## 8. Alimentar el Excel desde el Sheet (Power Query)
+**Sin conexión al Sheet la app no funciona**, ni para consultar. El catálogo
+vive allá, así que no hay nada que mostrar si no se puede llegar.
 
-El Excel sigue siendo el maestro del histórico, y el Sheet aporta lo nuevo.
-Para unirlos:
+**El historial de la app trae las 300 más recientes.** El resto se consulta
+en el Excel, que es donde conviene analizar. Ese número está en
+`COTIZACIONES_RECIENTES`, dentro del script.
 
-1. En el Sheet: **Archivo → Compartir → Publicar en la web**, elige la hoja
-   `COTIZACIONES` y formato **CSV**. Copia la URL.
-2. En Excel: **Datos → Obtener datos → Desde otras fuentes → Desde la web**,
-   pega esa URL.
-3. Haz *Anexar consultas* entre la hoja `COTIZACIONES` histórica y la nueva
-   consulta del Sheet.
+**Un destinatario con dos establecimientos en la misma comuna y el mismo
+sistema de declaración no se puede distinguir** en el formulario: la app
+elige el primero. Hoy pasa con tres casos.
 
-Como el Sheet parte vacío y el Excel conserva hasta `COT-01666`, no hay
-riesgo de duplicados.
+---
 
 ## Estructura del proyecto
 
 ```
 ├── src/
-│   ├── App.jsx          # Lógica y pantallas (login, formulario, historial)
-│   ├── data.js          # Catálogo de residuos y listas (generado, no editar a mano)
-│   ├── api.js           # Conexión con el Google Sheet — acá va la URL del Apps Script
+│   ├── App.jsx          # Pantallas y lógica: login, formulario, historial
+│   ├── api.js           # Conexión con el Sheet — acá va la URL del Apps Script
+│   ├── styles.css       # Estilos, incluida la versión para celular
 │   └── main.jsx
 ├── apps-script/
-│   └── Codigo.gs        # Código que se pega en Google Apps Script
-├── scripts/
-│   └── extract_data.py  # Regenera src/data.js desde un Excel actualizado
-└── .github/workflows/deploy.yml  # Publica la app en GitHub Pages en cada push a main
+│   └── Codigo.gs        # Se pega en Google Apps Script
+├── index.html
+├── vite.config.js       # 'base' debe calzar con el nombre del repositorio
+└── .github/workflows/deploy.yml   # Publica en GitHub Pages con cada push a main
 ```
